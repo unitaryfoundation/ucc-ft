@@ -172,3 +172,8 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# SMT files
+*.output
+*.smt2
+.local/

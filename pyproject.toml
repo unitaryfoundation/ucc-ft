@@ -1,0 +1,25 @@
+[project]
+name = "ucc-ft"
+version = "0.1.0"
+description = "Fault-tolerance circuit checker for Unitary Coupled Cluster (UCC)"
+authors = [
+    { name = "Brad Chase", email = "brad@unitary.foundation"},
+]
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "juliacall>=0.9.24",
+    "juliapkg>=0.1.16",
+    "openqasm3[parser]>=1.0.1",
+    "stim>=1.14.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "ruff>=0.11.8",
+]
