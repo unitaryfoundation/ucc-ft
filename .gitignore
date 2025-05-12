@@ -176,4 +176,5 @@ cython_debug/
 # SMT files
 *.output
 *.smt2
+.vscode/
 .local/

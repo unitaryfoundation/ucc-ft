@@ -355,7 +355,7 @@ class QProgAndContext:
     global_decls: dict[str, Any]
 
 
-def to_qprog(circuit):
+def qasm_to_qprog(circuit: str) -> QProgAndContext:
     """Convert the circuit to a qprog object, evaluating and returning a handle to
     the julia function object.
     """
@@ -368,8 +368,29 @@ def to_qprog(circuit):
 
     return QProgAndContext(
         src=buff.getvalue(),
-        qprog=getattr(jl, visitor.func_name),
+        qprog=getattr(
+            jl, visitor.func_name
+        )(),  # <-- evaluate the qprog to get a handle
         global_decls={s: getattr(jl, s) for s in visitor.global_decls},
+    )
+
+
+def julia_source_to_qprog(
+    src: str, func_name: str, decls: List[str]
+) -> QProgAndContext:
+    """Convert the circuit to a qprog object, evaluating and returning a handle to
+    the julia function object.
+
+    Args:
+        src (str): The Julia source code to be evaluated.
+        func_name (str): The name of the function handle that is the main QProg entry
+        decls (List[str]): A list of declarations to be included in the global context.
+    """
+    jl.seval(src)
+    return QProgAndContext(
+        src=src,
+        qprog=getattr(jl, func_name),
+        global_decls={s: getattr(jl, s) for s in decls},
     )
 
 
@@ -377,53 +398,66 @@ def _bits_needed(j):
     return int(math.ceil(math.log2(j + 1)))
 
 
-def ft_check(stabilizers: list[PauliString], circuit, max_faults) -> bool:
-    """Check if the given circuit over the given stabilizers is fault tolerent
-    up to max_faults.
-    """
-
-    # Directly translating CatPreparation.jl
+def ft_check(
+    input_stabilizers: list[PauliString],
+    target_stabilizers: list[PauliString],
+    circuit: str,
+    d: int,
+    NERRS: int = 12,  # TODO: Can this be inferred -- basically log2 number of maximum labeled errors (so how many bits to track it all))
+) -> bool:
     jl.seval("using QuantumSE;")
     jl.seval("using Z3;")
 
-    d = max_faults * 2 + 1
-    NERRS = 12  # TODO: Can this be inferred -- basically log2 number of maximum labeled errors (so how many bits to track it all))
-    tableau = to_julia_tableau_fmt(Tableau.from_stabilizers(stabilizers))
-    num_main_qubits = tableau.shape[
+    return ft_check_from_qprog(
+        input_stabilizers,
+        target_stabilizers,
+        qasm_to_qprog(circuit),
+        d,
+        NERRS=NERRS,
+    )
+
+
+def ft_check_from_qprog(
+    input_stabilizers: list[PauliString],
+    target_stabilizers: list[PauliString],
+    func_and_context: QProgAndContext,
+    d: int,
+    NERRS: int = 12,  # TODO: Can this be inferred -- basically log2 number of maximum labeled errors (so how many bits to track it all))
+) -> bool:
+    """
+    Check that the given circuit is fault tolerant for the given input and target states
+    represented by the provided symbolic stabilizers up to distance $d$.
+
+    """
+    jl.seval("using QuantumSE;")
+    jl.seval("using Z3;")
+
+    tableau_target = to_julia_tableau_fmt(Tableau.from_stabilizers(target_stabilizers))
+    num_main_qubits = tableau_target.shape[
         0
     ]  # TODO: validate this matches what is specified in circuit?
-    num_ancilla = 1  # TODO: infer from circuit?
+    num_ancilla = d * d - 1  # TODO: infer from circuit?
 
     # create the julia Z3 context
     ctx = jl.Context()
 
     # create target cat state symbolic stabilizer state
-    # TODO: For cat state phases are all 0 the function below doesn't do anything
-    # special. For general codes, we will need a way to setup the symbolic phases
-    rho_target = jl.from_stabilizer_py(num_main_qubits, tableau, ctx, num_ancilla)
+    rho_target = jl.from_stabilizer_py(
+        num_main_qubits, tableau_target, ctx, num_ancilla
+    )
 
     # create initial state
-    # TODO: For cat state, its not a QECC we are checking, but that starting
-    # from computationl basis, we succesfully prepare the cat state
-    # For other codes, will be expected results, e.g. initial state for prep
-    # logical gate result state of logical op, etc.
-
-    tableau_in = to_julia_tableau_fmt(
-        Tableau.from_stabilizers([PauliString(f"Z{i}") for i in range(num_main_qubits)])
-    )
+    tableau_in = to_julia_tableau_fmt(Tableau.from_stabilizers(input_stabilizers))
     rho_init = jl.from_stabilizer_py(num_main_qubits, tableau_in, ctx, num_ancilla)
-
-    # Translate the circuit to qprog
-    func_and_context = to_qprog(circuit)
 
     # Create CState object for looking up the classical variables
     # include any global constants declared in the QASM file
-    cstate = jl.make_cstate({"ctx": ctx} | func_and_context.global_decls)
+    cstate = jl.make_cstate({"ctx": ctx, "d": d} | func_and_context.global_decls)
 
     num_errors = (d - 1) // 2
     b_num_main_qubits = _bits_needed(num_main_qubits)
     nerrs_input = jl.bv_val(ctx, 0, b_num_main_qubits)
-    cfg1 = jl.SymConfig(func_and_context.qprog(), cstate, rho_init, NERRS)
+    cfg1 = jl.SymConfig(func_and_context.qprog, cstate, rho_init, NERRS)
 
     # Generate configurations and check_FT
     res = True

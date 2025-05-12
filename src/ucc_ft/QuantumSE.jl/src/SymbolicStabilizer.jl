@@ -687,6 +687,7 @@ function M!(q::SymStabilizerState, b, sym_name::String)
         return res
     else
         m = findfirst(ii -> q.xzs[b6, ii] & pw != 0, 1:q.num_qubits)
+        @assert m !== nothing "No matching row found for measurement; q.num_qubits=$(q.num_qubits)"
         rowcopy!(q, 2 * q.num_qubits + 1, m + q.num_qubits)
 
         @inbounds for j in m+1:q.num_qubits
