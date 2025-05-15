@@ -1,5 +1,5 @@
 from stim import PauliString
-
+from typing import List
 
 # For the rotated surface code, we follow the convention in the provided sample code.
 # The qubits are laid out on a grid, where qubits are numbered in row major order,
@@ -23,6 +23,11 @@ class RotatedSurfaceCode:
         if d % 2 == 0:
             raise ValueError("Distance d must be odd for a rotated surface code.")
         self.d = d
+
+    @property
+    def num_qubits(self) -> int:
+        """Return the number of qubits in the rotated surface code of distance d."""
+        return self.d * self.d
 
     def z_stabilizer_idx(self, idx: int):
         """
@@ -65,7 +70,7 @@ class RotatedSurfaceCode:
             res.append(self.rotate_idx(z_idx))
         return res
 
-    def stabilizers(self):
+    def stabilizers(self) -> List[PauliString]:
         """Return list of PauliString for the stabilizers of the
         rotated surface code of distance d."""
         res = []
@@ -78,19 +83,31 @@ class RotatedSurfaceCode:
             )
         return res
 
-    def logical_x_idx(self):
+    def logical_x_idx(self) -> List[int]:
         """Logical X operator, go across the middle of the surface code to match paper"""
         offset = self.d * (self.d - 1) // 2
         return [offset + i for i in range(self.d)]
 
-    def logical_z_idx(self):
+    def logical_z_idx(self) -> List[int]:
         """Return the logical Z operator for the rotated surface code of distance d."""
         return [self.rotate_idx(i) for i in self.logical_x_idx()]
 
-    def logical_x(self):
+    def logical_x(self) -> PauliString:
         """Return the logical X operator for the rotated surface code of distance d."""
         return PauliString("*".join([f"X{j}" for j in self.logical_x_idx()]))
 
-    def logical_z(self):
+    def logical_z(self) -> PauliString:
         """Return the logical Z operator for the rotated surface code of distance d."""
         return PauliString("*".join([f"Z{j}" for j in self.logical_z_idx()]))
+
+    def logical_prep_stabilizer(self) -> PauliString:
+        """The prepared state is |0>_L, the +1 eigenstate of the logical Z operator."""
+        return self.logical_z()
+
+    def physical_z_idx(self) -> List[int]:
+        """Return the physical Z operator for the rotated surface code of distance d."""
+        return [i for i in range(self.d * self.d)]
+
+    def physical_z_stabilizers(self) -> List[PauliString]:
+        """Return the physical Z operator for the rotated surface code of distance d."""
+        return [PauliString(f"Z{j}") for j in self.physical_z_idx()]

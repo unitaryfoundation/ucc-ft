@@ -360,6 +360,7 @@ def qasm_to_qprog(circuit: str) -> QProgAndContext:
     the julia function object.
     """
 
+    jl.seval("using QuantumSE")
     res = openqasm3.parse(circuit)
     buff = io.StringIO()
     visitor = QProgVisitor(buff)
@@ -398,72 +399,197 @@ def _bits_needed(j):
     return int(math.ceil(math.log2(j + 1)))
 
 
-def ft_check(
-    input_stabilizers: list[PauliString],
-    target_stabilizers: list[PauliString],
-    circuit: str,
-    d: int,
-    NERRS: int = 12,  # TODO: Can this be inferred -- basically log2 number of maximum labeled errors (so how many bits to track it all))
-) -> bool:
-    jl.seval("using QuantumSE;")
-    jl.seval("using Z3;")
-
-    return ft_check_from_qprog(
-        input_stabilizers,
-        target_stabilizers,
-        qasm_to_qprog(circuit),
-        d,
-        NERRS=NERRS,
+#### idealized FT check interface; will get there progressively
+def _make_symbolic_state(num_qubits, hack_ctx, hack_num_ancilla, stabilizers, phases):
+    return jl.from_stabilizer_py(
+        num_qubits,
+        to_julia_tableau_fmt(Tableau.from_stabilizers(stabilizers)),
+        phases,
+        hack_ctx,
+        hack_num_ancilla,
     )
 
 
-def ft_check_from_qprog(
-    input_stabilizers: list[PauliString],
-    target_stabilizers: list[PauliString],
+def _prepare_states(code, hack_ctx, hack_num_ancilla):
+    # Prepare state is physical z stabilizers (not code stabilizers!!!)
+    stabilizers = code.physical_z_stabilizers()
+    phases = [jl.bv_val(hack_ctx, 0, 1) for _ in range(len(stabilizers))]
+    return [
+        _make_symbolic_state(
+            code.num_qubits, hack_ctx, hack_num_ancilla, stabilizers, phases
+        )
+    ]
+
+
+def _measure_states(code, hack_ctx, hack_num_ancilla):
+    # Measurement states are the symbolic logical-Z states
+    stabilizers = code.stabilizers()
+    phases = [jl.bv_val(hack_ctx, 0, 1) for _ in range(len(stabilizers))]
+    stabilizers = stabilizers + [code.logical_z()]
+    phases = phases + [jl.bv_const(hack_ctx, "lz", 1)]
+    return [
+        _make_symbolic_state(
+            code.num_qubits, hack_ctx, hack_num_ancilla, stabilizers, phases
+        )
+    ]
+
+
+def _correct_states(code, hack_ctx, hack_num_ancilla):
+    # Error correction states are +1 logical-X and the symbolic logical-Z states
+    # |+> state
+    stabilizers_x = code.stabilizers() + [code.logical_x()]
+    phases_x = [jl.bv_val(hack_ctx, 0, 1) for _ in range(len(stabilizers_x))]
+    # |0/1> state
+    stabilizers_z = code.stabilizers() + [code.logical_z()]
+    phases_z = [jl.bv_val(hack_ctx, 0, 1) for _ in range(len(code.stabilizers()))] + [
+        jl.bv_const(hack_ctx, "lz", 1)
+    ]
+    return [
+        _make_symbolic_state(
+            code.num_qubits, hack_ctx, hack_num_ancilla, stabilizers_x, phases_x
+        ),
+        _make_symbolic_state(
+            code.num_qubits, hack_ctx, hack_num_ancilla, stabilizers_z, phases_z
+        ),
+    ]
+
+
+def _gate2_states(code, hack_ctx, hack_num_ancilla):
+    # Error correction states are +1 logical-X and the symbolic logical-Z states
+    # ... but for both qubits
+    num_qubits = code.num_qubits
+    code_stabilizers_1q = code.stabilizers()
+    logical_z_1q = code.logical_z()
+    logical_x_1q = code.logical_x()
+    # PauliString.operator+ is tensor product
+    code_stabilizers_2q = [
+        PauliString("I" * num_qubits) + s for s in code.stabilizers()
+    ]
+    logical_z_2q = PauliString("I" * num_qubits) + code.logical_z()
+    logical_x_2q = PauliString("I" * num_qubits) + code.logical_x()
+    # LX state
+    stabilizers_lx = (
+        code_stabilizers_1q + [logical_x_1q] + code_stabilizers_2q + [logical_x_2q]
+    )
+    phases_lx = [jl.bv_val(hack_ctx, 0, 1) for _ in range(len(stabilizers_lx))]
+    # LZ state
+    stabilizers_lz = (
+        code_stabilizers_1q + [logical_z_1q] + code_stabilizers_2q + [logical_z_2q]
+    )
+    phases_lz = (
+        [jl.bv_val(hack_ctx, 0, 1) for _ in range(len(code_stabilizers_1q))]
+        + [jl.bv_const(hack_ctx, "lz1", 1)]
+        + [jl.bv_val(hack_ctx, 0, 1) for _ in range(len(code_stabilizers_1q))]
+        + [jl.bv_const(hack_ctx, "lz2", 1)]
+    )
+    return [
+        _make_symbolic_state(
+            2 * code.num_qubits, hack_ctx, hack_num_ancilla, stabilizers_lx, phases_lx
+        ),
+        _make_symbolic_state(
+            2 * code.num_qubits, hack_ctx, hack_num_ancilla, stabilizers_lz, phases_lz
+        ),
+    ]
+
+
+def error_free_symbolic_output(
+    code, symbolic_input_state, gadget_type: str, hack_ctx, hack_num_ancilla
+):
+    match gadget_type:
+        case "prepare":
+            # logical |0> (no symbols since specific state)
+            stabilizers = code.stabilizers() + [code.logical_prep_stabilizer()]
+            phases = [jl.bv_val(hack_ctx, 0, 1) for _ in range(len(stabilizers))]
+            return _make_symbolic_state(
+                code.num_qubits, hack_ctx, hack_num_ancilla, stabilizers, phases
+            )
+        case "measure" | "decoder":
+            # same as input, but make a copy
+            return jl.copy(symbolic_input_state)
+            pass
+        case "gate":
+            # result of running the gate on the input (error free)
+            ## TODO: HOW??
+            # Assume CNOT for now (yucky)
+            res = jl.copy(symbolic_input_state)
+            d = code.d
+            for i in range(1, d * d + 1):
+                jl.CNOT(res, i, i + d * d)
+            return res
+        case _:
+            raise ValueError(f"Invalid gadget type: {gadget_type}")
+    pass
+
+
+def ft_check_ideal(
+    code,
     func_and_context: QProgAndContext,
-    d: int,
+    gadget_type: str,
     NERRS: int = 12,  # TODO: Can this be inferred -- basically log2 number of maximum labeled errors (so how many bits to track it all))
-) -> bool:
+):
     """
-    Check that the given circuit is fault tolerant for the given input and target states
-    represented by the provided symbolic stabilizers up to distance $d$.
-
+    Check if the given circuit is fault tolerant for the given code and gadget type.
     """
-    jl.seval("using QuantumSE;")
-    jl.seval("using Z3;")
-
-    tableau_target = to_julia_tableau_fmt(Tableau.from_stabilizers(target_stabilizers))
-    num_main_qubits = tableau_target.shape[
-        0
-    ]  # TODO: validate this matches what is specified in circuit?
-    num_ancilla = d * d - 1  # TODO: infer from circuit?
-
-    # create the julia Z3 context
+    jl.seval("using Z3")
+    jl.seval("using QuantumSE")
     ctx = jl.Context()
 
-    # create target cat state symbolic stabilizer state
-    rho_target = jl.from_stabilizer_py(
-        num_main_qubits, tableau_target, ctx, num_ancilla
-    )
+    num_ancilla = code.d * code.d - 1  # TODO: infer from circuit?
 
-    # create initial state
-    tableau_in = to_julia_tableau_fmt(Tableau.from_stabilizers(input_stabilizers))
-    rho_init = jl.from_stabilizer_py(num_main_qubits, tableau_in, ctx, num_ancilla)
+    state_builders = {
+        "prepare": _prepare_states,
+        "measurement": _measure_states,
+        "decoder": _correct_states,
+        "gate": _gate2_states,
+    }
+    if gadget_type not in state_builders:
+        raise ValueError(f"Invalid gadget type: {gadget_type}")
+    symbolic_input_states = state_builders[gadget_type](code, ctx, num_ancilla)
 
-    # Create CState object for looking up the classical variables
-    # include any global constants declared in the QASM file
-    cstate = jl.make_cstate({"ctx": ctx, "d": d} | func_and_context.global_decls)
+    for symbolic_input_state in symbolic_input_states:
+        # Reset counter used inside julia code for error names
+        jl.clearerrcnt()
 
-    num_errors = (d - 1) // 2
-    b_num_main_qubits = _bits_needed(num_main_qubits)
-    nerrs_input = jl.bv_val(ctx, 0, b_num_main_qubits)
-    cfg1 = jl.SymConfig(func_and_context.qprog, cstate, rho_init, NERRS)
+        symbolic_target_state = error_free_symbolic_output(
+            code, symbolic_input_state, gadget_type, ctx, num_ancilla
+        )
 
-    # Generate configurations and check_FT
-    res = True
-    cfgs1 = jl.QuantSymEx(cfg1)
-    for cfg in cfgs1:
-        if not jl.check_FT_py(cfg, rho_target, num_errors, nerrs_input, "prepare"):
-            res = False
-            break
-    return res
+        cstate = jl.make_cstate(
+            {"ctx": ctx, "d": code.d} | func_and_context.global_decls
+        )
+        num_errors = (code.d - 1) // 2
+
+        num_main_qubits = code.num_qubits
+        num_blocks = 1
+        if gadget_type == "gate":
+            num_main_qubits = 2 * code.num_qubits
+            num_blocks = 2
+
+        b_num_main_qubits = _bits_needed(num_main_qubits)
+
+        # inject start state errors
+        nerrs_input = jl.bv_val(ctx, 0, b_num_main_qubits)
+        if gadget_type != "prepare":
+            nerrs_input = jl.inject_errors(
+                symbolic_input_state,
+                num_main_qubits,
+                ctx,
+                nerrs_input,
+                b_num_main_qubits,
+            )
+
+        cfg1 = jl.SymConfig(func_and_context.qprog, cstate, symbolic_input_state, NERRS)
+
+        # Generate configurations and check_FT
+        cfgs1 = jl.QuantSymEx(cfg1)
+        for cfg in cfgs1:
+            if not jl.check_FT_py(
+                cfg,
+                symbolic_target_state,
+                num_errors,
+                nerrs_input,
+                gadget_type,
+                num_blocks=num_blocks,
+            ):
+                return False
+    return True
