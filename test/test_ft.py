@@ -4,7 +4,11 @@ from stim import PauliString, Tableau
 from pathlib import Path  # Add this import
 
 from ucc_ft.checker import to_julia_tableau_fmt
-from ucc_ft.checker import ft_check, ft_check_from_qprog, julia_source_to_qprog
+from ucc_ft.checker import (
+    julia_source_to_qprog,
+    ft_check_ideal,
+    qasm_to_qprog,
+)
 from ucc_ft.surface_code import RotatedSurfaceCode
 
 
@@ -32,6 +36,26 @@ def test_to_julia_tableau_fmt():
     assert np.array_equal(res, expected)
 
 
+# class for "Cat State" code
+class CatStateCode:
+    def __init__(self, num_qubits: int, max_faults: int):
+        self.num_qubits = num_qubits
+        self.d = max_faults * 2 + 1
+
+    def stabilizers(self):
+        return [
+            PauliString(f"Z{i}*Z{j}")
+            for (i, j) in zip(range(self.num_qubits), range(1, self.num_qubits))
+        ]
+
+    def logical_prep_stabilizer(self):
+        """The prepared state is |+>_L, the +1 eigenstate of the logical X operator."""
+        return PauliString("X" * self.num_qubits)
+
+    def physical_z_stabilizers(self):
+        return [PauliString(f"Z{i}") for i in range(self.num_qubits)]
+
+
 @pytest.mark.parametrize(
     "max_faults, expected_result",
     [
@@ -43,14 +67,15 @@ def test_check_ft_cat_state_with_different_faults(max_faults, expected_result):
     """Test the fault tolerance of the cat state circuit with varying max_faults."""
 
     num_qubits = 8
+    code = CatStateCode(num_qubits, max_faults)
 
-    target_stabilizers = [
-        PauliString(f"Z{i}*Z{j}")
-        for (i, j) in zip(range(num_qubits), range(1, num_qubits))
-    ]
-    target_stabilizers.append(PauliString("X" * num_qubits))
+    # target_stabilizers = [
+    #     PauliString(f"Z{i}*Z{j}")
+    #     for (i, j) in zip(range(num_qubits), range(1, num_qubits))
+    # ]
+    # target_stabilizers.append(PauliString("X" * num_qubits))
 
-    input_stabilizers = [PauliString(f"Z{i}") for i in range(num_qubits)]
+    # input_stabilizers = [PauliString(f"Z{i}") for i in range(num_qubits)]
 
     circuit = """
     OPENQASM 3.0;
@@ -84,30 +109,15 @@ def test_check_ft_cat_state_with_different_faults(max_faults, expected_result):
     }
     """.replace("__NUM_QUBITS__", str(num_qubits))
 
-    # Check if the circuit is fault tolerant
-    d = max_faults * 2 + 1
-    result = ft_check(input_stabilizers, target_stabilizers, circuit, d, NERRS=12)
+    result = ft_check_ideal(code, qasm_to_qprog(circuit), "prepare", NERRS=12)
     assert result == expected_result
 
 
-def test_check_rotated_prep():
+def test_check_rotated_surface_prep():
     """Test the fault tolerance of the rotated surface code preparation circuit."""
 
     d = 3
     sc = RotatedSurfaceCode(d)
-
-    # The output of preparation is the logical-|0>, which requires
-    # adding the logical Z operator to the list of stabilizers
-    target = sc.stabilizers()
-    target.append(sc.logical_z())
-
-    # The initial input is all physical qubits in |0> state, which
-    # requires adding the joint physical Z operator on all qubits
-    # to the list of stabilizers
-    init = sc.stabilizers()
-    init.append(PauliString("*".join([f"Z{i}" for i in range(d * d)])))
-
-    # Use pathlib to load the file from the resources directory
     julia_source_path = Path(__file__).parent / "rotated_surface_code.jl"
     julia_source = julia_source_path.read_text()
 
@@ -128,15 +138,34 @@ def test_check_rotated_prep():
         ],
     )
     qprog_and_context.qprog = qprog_and_context.qprog(d)
-    result = ft_check_from_qprog(init, target, qprog_and_context, d, NERRS=12)
+    result = ft_check_ideal(sc, qprog_and_context, "prepare", NERRS=12)
     assert result
 
-    # Todo:
-    # -- No custom QPROG (use as is)
-    #    1. Generalize the check_FT call to take target and destination
-    #               ( longer term comes from running the circuit?)
-    #    2. Import the QPROG by hand
-    #    3. Do the assert ... how to have a failure case too?
+
+def test_check_rotated_surface_CNOT():
+    """Test the fault tolerance of the rotated surface code gate circuit."""
+    d = 3
+    sc = RotatedSurfaceCode(d)
+    julia_source_path = Path(__file__).parent / "rotated_surface_code.jl"
+    julia_source = julia_source_path.read_text()
+
+    qprog_and_context = julia_source_to_qprog(
+        julia_source,
+        "rotated_surface_CNOT",
+        ["rotated_surface_CNOT"],
+    )
+    qprog_and_context.qprog = qprog_and_context.qprog(d)
+    result = ft_check_ideal(sc, qprog_and_context, "gate", NERRS=12)
+    assert result
+
+    # TODO:
+    #  Goal is ft_check(code: StabilizerCode, circuit: CircuitType, gadget_type: GadgetType)
+    #           input_state = input_for(code, gadget_type) <--- can try?
+    #           output_state = run_circuit(input_state) #<--messy for now, do by hand!
+    #           # run the FT check
+    #   Add other gadgets
+    #    Stablizer code -> tableau (Where to add phases?)
+    #    C
     # --- Custom QPROG
     #    1. Write QASM, but have external calls or predefined submodules for some elements?
     #         No multiqubit measur, but yes for cat state prep?

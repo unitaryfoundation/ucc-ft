@@ -42,3 +42,9 @@ def test_logical_x_idx():
 
 def test_logical_z_idx():
     assert sorted(RotatedSurfaceCode(3).logical_z_idx()) == [1, 4, 7]
+
+
+def test_physical_z_idx():
+    # Test for d=3
+    sc = RotatedSurfaceCode(3)
+    assert sorted(sc.physical_z_idx()) == [0, 1, 2, 3, 4, 5, 6, 7, 8]
