@@ -400,61 +400,57 @@ def _bits_needed(j):
 
 
 #### idealized FT check interface; will get there progressively
-def _make_symbolic_state(num_qubits, hack_ctx, hack_num_ancilla, stabilizers, phases):
+def _make_symbolic_state(num_qubits, ctx, num_ancilla, stabilizers, phases):
     return jl.from_stabilizer_py(
         num_qubits,
         to_julia_tableau_fmt(Tableau.from_stabilizers(stabilizers)),
         phases,
-        hack_ctx,
-        hack_num_ancilla,
+        ctx,
+        num_ancilla,
     )
 
 
-def _prepare_states(code, hack_ctx, hack_num_ancilla):
+def _prepare_states(code, ctx, num_ancilla):
     # Prepare state is physical z stabilizers (not code stabilizers!!!)
     stabilizers = code.physical_z_stabilizers()
-    phases = [jl.bv_val(hack_ctx, 0, 1) for _ in range(len(stabilizers))]
+    phases = [jl.bv_val(ctx, 0, 1) for _ in range(len(stabilizers))]
     return [
-        _make_symbolic_state(
-            code.num_qubits, hack_ctx, hack_num_ancilla, stabilizers, phases
-        )
+        _make_symbolic_state(code.num_qubits, ctx, num_ancilla, stabilizers, phases)
     ]
 
 
-def _measure_states(code, hack_ctx, hack_num_ancilla):
+def _measure_states(code, ctx, num_ancilla):
     # Measurement states are the symbolic logical-Z states
     stabilizers = code.stabilizers()
-    phases = [jl.bv_val(hack_ctx, 0, 1) for _ in range(len(stabilizers))]
+    phases = [jl.bv_val(ctx, 0, 1) for _ in range(len(stabilizers))]
     stabilizers = stabilizers + [code.logical_z()]
-    phases = phases + [jl.bv_const(hack_ctx, "lz", 1)]
+    phases = phases + [jl.bv_const(ctx, "lz", 1)]
     return [
-        _make_symbolic_state(
-            code.num_qubits, hack_ctx, hack_num_ancilla, stabilizers, phases
-        )
+        _make_symbolic_state(code.num_qubits, ctx, num_ancilla, stabilizers, phases)
     ]
 
 
-def _correct_states(code, hack_ctx, hack_num_ancilla):
+def _correct_states(code, ctx, num_ancilla):
     # Error correction states are +1 logical-X and the symbolic logical-Z states
     # |+> state
     stabilizers_x = code.stabilizers() + [code.logical_x()]
-    phases_x = [jl.bv_val(hack_ctx, 0, 1) for _ in range(len(stabilizers_x))]
+    phases_x = [jl.bv_val(ctx, 0, 1) for _ in range(len(stabilizers_x))]
     # |0/1> state
     stabilizers_z = code.stabilizers() + [code.logical_z()]
-    phases_z = [jl.bv_val(hack_ctx, 0, 1) for _ in range(len(code.stabilizers()))] + [
-        jl.bv_const(hack_ctx, "lz", 1)
+    phases_z = [jl.bv_val(ctx, 0, 1) for _ in range(len(code.stabilizers()))] + [
+        jl.bv_const(ctx, "lz", 1)
     ]
     return [
         _make_symbolic_state(
-            code.num_qubits, hack_ctx, hack_num_ancilla, stabilizers_x, phases_x
+            code.num_qubits, ctx, num_ancilla, stabilizers_x, phases_x
         ),
         _make_symbolic_state(
-            code.num_qubits, hack_ctx, hack_num_ancilla, stabilizers_z, phases_z
+            code.num_qubits, ctx, num_ancilla, stabilizers_z, phases_z
         ),
     ]
 
 
-def _gate2_states(code, hack_ctx, hack_num_ancilla):
+def _gate2_states(code, ctx, num_ancilla):
     # Error correction states are +1 logical-X and the symbolic logical-Z states
     # ... but for both qubits
     num_qubits = code.num_qubits
@@ -471,39 +467,39 @@ def _gate2_states(code, hack_ctx, hack_num_ancilla):
     stabilizers_lx = (
         code_stabilizers_1q + [logical_x_1q] + code_stabilizers_2q + [logical_x_2q]
     )
-    phases_lx = [jl.bv_val(hack_ctx, 0, 1) for _ in range(len(stabilizers_lx))]
+    phases_lx = [jl.bv_val(ctx, 0, 1) for _ in range(len(stabilizers_lx))]
     # LZ state
     stabilizers_lz = (
         code_stabilizers_1q + [logical_z_1q] + code_stabilizers_2q + [logical_z_2q]
     )
     phases_lz = (
-        [jl.bv_val(hack_ctx, 0, 1) for _ in range(len(code_stabilizers_1q))]
-        + [jl.bv_const(hack_ctx, "lz1", 1)]
-        + [jl.bv_val(hack_ctx, 0, 1) for _ in range(len(code_stabilizers_1q))]
-        + [jl.bv_const(hack_ctx, "lz2", 1)]
+        [jl.bv_val(ctx, 0, 1) for _ in range(len(code_stabilizers_1q))]
+        + [jl.bv_const(ctx, "lz1", 1)]
+        + [jl.bv_val(ctx, 0, 1) for _ in range(len(code_stabilizers_1q))]
+        + [jl.bv_const(ctx, "lz2", 1)]
     )
     return [
         _make_symbolic_state(
-            2 * code.num_qubits, hack_ctx, hack_num_ancilla, stabilizers_lx, phases_lx
+            2 * code.num_qubits, ctx, num_ancilla, stabilizers_lx, phases_lx
         ),
         _make_symbolic_state(
-            2 * code.num_qubits, hack_ctx, hack_num_ancilla, stabilizers_lz, phases_lz
+            2 * code.num_qubits, ctx, num_ancilla, stabilizers_lz, phases_lz
         ),
     ]
 
 
 def error_free_symbolic_output(
-    code, symbolic_input_state, gadget_type: str, hack_ctx, hack_num_ancilla
+    code, symbolic_input_state, gadget_type: str, ctx, num_ancilla
 ):
     match gadget_type:
         case "prepare":
             # logical |0> (no symbols since specific state)
             stabilizers = code.stabilizers() + [code.logical_prep_stabilizer()]
-            phases = [jl.bv_val(hack_ctx, 0, 1) for _ in range(len(stabilizers))]
+            phases = [jl.bv_val(ctx, 0, 1) for _ in range(len(stabilizers))]
             return _make_symbolic_state(
-                code.num_qubits, hack_ctx, hack_num_ancilla, stabilizers, phases
+                code.num_qubits, ctx, num_ancilla, stabilizers, phases
             )
-        case "measure" | "decoder":
+        case "measurement" | "decoder":
             # same as input, but make a copy
             return jl.copy(symbolic_input_state)
             pass
@@ -583,6 +579,18 @@ def ft_check_ideal(
         # Generate configurations and check_FT
         cfgs1 = jl.QuantSymEx(cfg1)
         for cfg in cfgs1:
+            # Need to grab these for measurement case
+            # TODO: Was hard coded to match surface code # meas_result=cfg.σ[:final_res], meas_gt=lz
+            meas_result = (
+                getattr(cfg, "σ").get(jl.seval(":final_res"))
+                if gadget_type == "measurement"
+                else None
+            )
+            # In Z3, same name and type are the same, so don't need to keep a handle around from when state was created
+            meas_gt = (
+                jl.bv_const(ctx, "lz", 1) if gadget_type == "measurement" else None
+            )
+
             if not jl.check_FT_py(
                 cfg,
                 symbolic_target_state,
@@ -590,6 +598,8 @@ def ft_check_ideal(
                 nerrs_input,
                 gadget_type,
                 num_blocks=num_blocks,
+                meas_result=meas_result,
+                meas_gt=meas_gt,
             ):
                 return False
     return True

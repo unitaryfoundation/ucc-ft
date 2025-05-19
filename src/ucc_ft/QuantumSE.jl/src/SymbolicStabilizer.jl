@@ -1081,8 +1081,8 @@ function check_FT(q1::SymStabilizerState, q2::SymStabilizerState, assumptions::T
 
 
     if FT_type == "measurement"
-        @assert typeof(meas_result) == Z3.Expr
-        @assert typeof(meas_gt) == Z3.Expr
+        @assert isa(meas_result, Z3.Expr)
+        @assert isa(meas_gt, Z3.Expr)
         measurement_condition = (meas_result == meas_gt)
         conjecture = assumption_num_errors & assumptions[1] & assumptions[3] & not(measurement_condition)
     else

@@ -28,7 +28,7 @@ function _xadj(d, idx)
     return [rotate(d,res[i]) for i in 1:length(res)]
 end
 
-function mwpm(d::Integer, s, s_type)
+function mwpm(ctx, d::Integer, s, s_type)
 
     # assertion
     phi1 = bool_val(ctx, true)
@@ -53,7 +53,7 @@ function mwpm(d::Integer, s, s_type)
     (r, (simplify(not(phi)) | (ϕ₁ & ϕ₂)), bool_val(ctx, true), bool_val(ctx, true))
 end
 
-function mwpm2(d::Integer, s_x, s_z)
+function mwpm2(ctx, d::Integer, s_x, s_z)
 
     num_qubits = d*d
     num_logical_qubits = 1
@@ -260,9 +260,9 @@ end
 
     end :until (check_eq == bv_val(ctx, 0, 1))
 
-    r_x = mwpm(d, s_x[:, t+1], "X")
-    r_z = mwpm(d, s_z[:, t+1], "Z")
-    #r = mwpm2(d, s_x, s_z)
+    r_x = mwpm(ctx, d, s_x[:, t+1], "X")
+    r_z = mwpm(ctx, d, s_z[:, t+1], "Z")
+    #r = mwpm2(ctx, d, s_x, s_z)
 
     for j in 1:d*d
         #sZ(j, r_x[j])
@@ -458,7 +458,7 @@ end
 
 end
 
-function majority(s)
+function majority(ctx, s)
 
     # assert length(s) % 2 == 1
     len_s = length(s)
@@ -486,7 +486,7 @@ end
         _rotated_surface_decoder(d)
     end
 
-    final_res = majority(m_lz)
+    final_res = majority(ctx, m_lz)
 
 end
 
