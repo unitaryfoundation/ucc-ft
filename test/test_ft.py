@@ -158,6 +158,63 @@ def test_check_rotated_surface_CNOT():
     result = ft_check_ideal(sc, qprog_and_context, "gate", NERRS=12)
     assert result
 
+
+def test_check_rotated_surface_decoder():
+    """Test the fault tolerance of the rotated surface code gate decoder+correction gadget."""
+    d = 3
+    sc = RotatedSurfaceCode(d)
+    julia_source_path = Path(__file__).parent / "rotated_surface_code.jl"
+    julia_source = julia_source_path.read_text()
+
+    qprog_and_context = julia_source_to_qprog(
+        julia_source,
+        "rotated_surface_decoder",
+        [
+            "_rotated_surface_decoder",
+            "rotated_surface_decoder",
+            "rotated_surface_z_m",
+            "rotated_surface_x_m",
+            "_xadj",
+            "_zadj",
+            "prepare_cat",
+            "generate_cat_verification",
+            "mwpm",
+            "mwpm2",
+        ],
+    )
+    qprog_and_context.qprog = qprog_and_context.qprog(d)
+    result = ft_check_ideal(sc, qprog_and_context, "decoder", NERRS=12)
+    assert result
+
+
+def test_check_rotated_surface_measure():
+    """Test the fault tolerance of the rotated surface code gate measurement gadget."""
+    d = 3
+    sc = RotatedSurfaceCode(d)
+    julia_source_path = Path(__file__).parent / "rotated_surface_code.jl"
+    julia_source = julia_source_path.read_text()
+
+    qprog_and_context = julia_source_to_qprog(
+        julia_source,
+        "rotated_surface_measurement",
+        [
+            "rotated_surface_measurement",
+            "_rotated_surface_decoder",
+            "rotated_surface_z_m",
+            "rotated_surface_x_m",
+            "rotated_surface_lz_m",
+            "majority",
+            "_xadj",
+            "_zadj",
+            "prepare_cat",
+            "generate_cat_verification",
+            "mwpm",
+        ],
+    )
+    qprog_and_context.qprog = qprog_and_context.qprog(d)
+    result = ft_check_ideal(sc, qprog_and_context, "measurement", NERRS=12)
+    assert result
+
     # TODO:
     #  Goal is ft_check(code: StabilizerCode, circuit: CircuitType, gadget_type: GadgetType)
     #           input_state = input_for(code, gadget_type) <--- can try?
