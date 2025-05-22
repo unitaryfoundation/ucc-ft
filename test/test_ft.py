@@ -8,6 +8,7 @@ from ucc_ft.checker import (
     julia_source_to_qprog,
     ft_check_ideal,
     qasm_to_qprog,
+    qasm_to_qprog_source,
 )
 from ucc_ft.surface_code import RotatedSurfaceCode
 
@@ -68,14 +69,6 @@ def test_check_ft_cat_state_with_different_faults(max_faults, expected_result):
 
     num_qubits = 8
     code = CatStateCode(num_qubits, max_faults)
-
-    # target_stabilizers = [
-    #     PauliString(f"Z{i}*Z{j}")
-    #     for (i, j) in zip(range(num_qubits), range(1, num_qubits))
-    # ]
-    # target_stabilizers.append(PauliString("X" * num_qubits))
-
-    # input_stabilizers = [PauliString(f"Z{i}") for i in range(num_qubits)]
 
     circuit = """
     OPENQASM 3.0;
@@ -142,6 +135,48 @@ def test_check_rotated_surface_prep():
     result = ft_check_ideal(
         sc,
         qprog_context.get_qprog("rotated_surface_prepare_0", d),
+        qprog_context,
+        "prepare",
+        NERRS=12,
+    )
+    assert result
+
+
+def test_check_rotated_surface_prep_qasm():
+    """Test the fault tolerance of the rotated surface code preparation circuit."""
+
+    d = 3
+    sc = RotatedSurfaceCode(d)
+    qasm_source_path = Path(__file__).parent / "rotated_surface_code.qasm"
+    qasm_source = qasm_source_path.read_text()
+    qprog_src = qasm_to_qprog_source(qasm_source)
+
+    julia_source_path = Path(__file__).parent / "rotated_surface_code.jl"
+    julia_source = julia_source_path.read_text()
+
+    qprog_context = julia_source_to_qprog(
+        julia_source + "\n\n" + qprog_src,
+        [
+            "prepare_state",
+            "rotated_surface_z_m",
+            "rotated_surface_x_m",
+            "rotated_surface_lz_m",
+            "_xadj",
+            "_zadj",
+            "prepare_cat",
+            "generate_cat_verification",
+            "mwpm_full",
+            "mwpm_full_x",
+            "mwpm_full_z",
+            "data_size",
+            "ancilla_size",
+            "num_syndromes",
+        ],
+    )
+
+    result = ft_check_ideal(
+        sc,
+        qprog_context.get_qprog("prepare_state"),
         qprog_context,
         "prepare",
         NERRS=12,

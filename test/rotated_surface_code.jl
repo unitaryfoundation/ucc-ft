@@ -112,32 +112,62 @@ function mwpm2(ctx, d::Integer, s_x, s_z)
     (Pauli_err_vec, (simplify(not(phi)) | weight_condition), bool_val(ctx, true), bool_val(ctx, true))
 end
 
-@qprog prepare_cat (cat_qubits, verify_qubit, d) begin
+@qprog prepare_cat_orig (cat_qubits, verify_qubit, d) begin
 
     @repeat begin
 
-        INITP(cat_qubits[1])
-        for i in 2:length(cat_qubits)
-            INIT2CNOT12(cat_qubits[1], cat_qubits[i])
-        end
-
+        #INITP(cat_qubits[1])
+        # More efficient approach that relies on combined init+CNOT for more succinct description
         #for i in 2:length(cat_qubits)
-        #    CNOT(cat_qubits[1], cat_qubits[i])
+        #   INIT2CNOT12(cat_qubits[1], cat_qubits[i])
         #end
+
+        INIT(cat_qubits[1])
+        H(cat_qubits[1])
+        for i in 2:length(cat_qubits)
+            INIT(cat_qubits[i])
+            CNOT(cat_qubits[1], cat_qubits[i])
+        end
 
         verify = generate_cat_verification(d, length(cat_qubits))
         res = Vector{Z3.Expr}(undef, length(verify)+1)
         res[1] = bv_val(ctx, 0, 1)
         for i in 1:length(verify)
-            #INIT(verify_qubit)
-            #CNOT(cat_qubits[verify[i][1]], verify_qubit)
-            INIT2CNOT12(cat_qubits[verify[i][1]], verify_qubit)
-            #CNOT(cat_qubits[verify[i][2]], verify_qubit)
-            #res[i+1] = DestructiveM(verify_qubit)
-            res[i+1] = CNOT12DestructiveM2(cat_qubits[verify[i][2]], verify_qubit)
+            # Invert comments to use more succinct version from the paper
+            INIT(verify_qubit)
+            CNOT(cat_qubits[verify[i][1]], verify_qubit)
+            #INIT2CNOT12(cat_qubits[verify[i][1]], verify_qubit)
+            CNOT(cat_qubits[verify[i][2]], verify_qubit)
+            res[i+1] = DestructiveM(verify_qubit)
+            #res[i+1] = CNOT12DestructiveM2(cat_qubits[verify[i][2]], verify_qubit)
         end
 
     end :until (reduce(|, res) == bv_val(ctx, 0, 1))
+
+end
+
+@qprog prepare_cat (cat_qubits, verify_qubit, d) begin
+
+    @repeat begin
+
+        INIT(cat_qubits[1])
+        H(cat_qubits[1])
+        for i in 2:length(cat_qubits)
+            INIT(cat_qubits[i])
+            CNOT(cat_qubits[1], cat_qubits[i])
+        end
+
+        verify = generate_cat_verification(d, length(cat_qubits))
+        res = bv_val(ctx, 0, 1)
+        for i in 1:length(verify)
+            INIT(verify_qubit)
+            CNOT(cat_qubits[verify[i][1]], verify_qubit)
+            CNOT(cat_qubits[verify[i][2]], verify_qubit)
+            tmp = DestructiveM(verify_qubit)
+            res = res | tmp
+        end
+
+    end :until (res == bv_val(ctx, 0, 1))
 
 end
 
@@ -158,8 +188,10 @@ end
     len_b = length(b)
     cat_qubits = [d*d+i for i in 1:len_b]
     verify_qubit = d*d+len_b+1
-    #prepare_cat(cat_qubits, verify_qubit, d)
-    CatPreparationMod(cat_qubits)
+    prepare_cat(cat_qubits, verify_qubit, d)
+    # More efficient approach just checks outputs given cat preparation gadget
+    # already checked
+    #CatPreparationMod(cat_qubits)
     res = Vector{Z3.Expr}(undef, len_b)
     for i in 1:len_b
         CNOT(cat_qubits[i], b[i])
@@ -190,8 +222,10 @@ end
     len_b = length(b)
     cat_qubits = [d*d+i for i in 1:len_b]
     verify_qubit = d*d+len_b+1
-    #prepare_cat(cat_qubits, verify_qubit, d)
-    CatPreparationMod(cat_qubits)
+    # More efficient approach just checks outputs given cat preparation gadget
+    # already checked
+    prepare_cat(cat_qubits, verify_qubit, d)
+    #CatPreparationMod(cat_qubits)
     res = Vector{Z3.Expr}(undef, len_b)
     for i in 1:len_b
         CZ(cat_qubits[i], b[i])
@@ -326,8 +360,9 @@ end
 
     cat_qubits = [d*d+i for i in 1:d]
     verify_qubit = d*d+d+1
-    #prepare_cat(cat_qubits, verify_qubit, d)
-    CatPreparationMod(cat_qubits)
+    # More efficient approach just checks outputs given cat preparation gadget
+    prepare_cat(cat_qubits, verify_qubit, d)
+    #CatPreparationMod(cat_qubits)
     res = Vector{Z3.Expr}(undef, d)
     for i in 1:d
         CZ(cat_qubits[i], b[i])
@@ -359,13 +394,22 @@ end
 #    (r, ϕ₁, bool_val(ctx, true), bool_val(ctx, true))
 #end
 
-function mwpm_full(ctx, d::Integer, s, s_type, ml, ml_adj)
+function mwpm_full_x(ctx, d::Integer, s)
+    mwpm_full(ctx, d, s, true, [])
+end
+
+function mwpm_full_z(ctx, d::Integer, s, ml)
+    mwpm_full(ctx, d, s, false, [ml])
+end
+
+function mwpm_full(ctx, d::Integer, s, isX::Bool, ml)
 
     num_qubits = d*d
     num_stabilizers = length(s)
     num_logical = length(ml)
+    ml_adj = num_logical == 1 ? [[(i-1)*d+(d+1)÷2 for i in 1:d]] : []
 
-    adj = s_type == "X" ? _xadj : _zadj
+    adj = isX ? _xadj : _zadj
 
     mat=zeros(Bool, num_stabilizers+num_logical, num_qubits)
     for j in 1:num_stabilizers
@@ -390,8 +434,7 @@ function mwpm_full(ctx, d::Integer, s, s_type, ml, ml_adj)
         part_solution[j] = simplify(reduce(⊻, [inv_mat[j, jj] & s[jj] for jj in 1:num_stabilizers+num_logical]))
     end
 
-    (part_solution, bool_val(ctx, true), bool_val(ctx, true), bool_val(ctx, true))
-
+    part_solution
 end
 
 @qprog _rotated_surface_prepare_0 (d) begin
@@ -411,16 +454,17 @@ end
 
         for i in 1:t+1
             for j in 1:(d*d-1)÷2
-                #s_x[j,i] = rotated_surface_x_m(d, j)
-                #s_z[j,i] = rotated_surface_z_m(d, j)
-                b = _xadj(d, j)
-                s_x[j,i] = MultiPauliMeasurement(b, ['X' for kk in 1:length(b)])
-                b = _zadj(d, j)
-                s_z[j,i] = MultiPauliMeasurement(b, ['Z' for kk in 1:length(b)])
+                s_x[j,i] = rotated_surface_x_m(d, j)
+                s_z[j,i] = rotated_surface_z_m(d, j)
+                # More efficient MultiPauliMeasurement relies on having already checked thoes gadgets
+                #b = _xadj(d, j)
+                #s_x[j,i] = MultiPauliMeasurement(b, ['X' for kk in 1:length(b)])
+                #b = _zadj(d, j)
+                #s_z[j,i] = MultiPauliMeasurement(b, ['Z' for kk in 1:length(b)])
             end
-            #s_z[(d*d+1)÷2,i] = rotated_surface_lz_m(d)
-            b = [(ii-1)*d+(d+1)÷2 for ii in 1:d]
-            s_z[(d*d+1)÷2,i] = MultiPauliMeasurement(b, ['Z' for kk in 1:length(b)])
+            s_z[(d*d+1)÷2,i] = rotated_surface_lz_m(d)
+            #b = [(ii-1)*d+(d+1)÷2 for ii in 1:d]
+            #s_z[(d*d+1)÷2,i] = MultiPauliMeasurement(b, ['Z' for kk in 1:length(b)])
         end
 
         check_eq_x = Vector{Z3.Expr}(undef, t)
@@ -435,14 +479,13 @@ end
 
     end :until (check_eq == bv_val(ctx, 0, 1))
 
-    lz_adj = [[(i-1)*d+(d+1)÷2 for i in 1:d]]
-    r_x = mwpm_full(ctx, d, s_x[1:(d*d-1)÷2, t+1], "X", [], [])
-    r_z = mwpm_full(ctx, d, s_z[1:(d*d-1)÷2, t+1], "Z", s_z[(d*d+1)÷2:(d*d+1)÷2, t+1], lz_adj)
+    r_x = mwpm_full(ctx, d, s_x[1:(d*d-1)÷2, t+1], true, [])
+    r_z = mwpm_full(ctx, d, s_z[1:(d*d-1)÷2, t+1], false, s_z[(d*d+1)÷2:(d*d+1)÷2, t+1])
 
     for j in 1:d*d
-        #sZ(j, r_x[j])
-        #sX(j, r_z[j])
-        sPauli(j, r_z[j], r_x[j])
+        sZ(j, r_x[j])
+        sX(j, r_z[j])
+        #sPauli(j, r_z[j], r_x[j])
     end
 
 end
@@ -498,12 +541,12 @@ end
     s_z = Vector{Z3.Expr}(undef, (d*d-1)÷2)
 
     for j in 1:(d*d-1)÷2
-        #s_x[j] = rotated_surface_x_m(d, j)
-        #s_z[j] = rotated_surface_z_m(d, j)
-        b = _xadj(d, j)
-        s_x[j] = MultiPauliMeasurement(b, ['X' for kk in 1:length(b)])
-        b = _zadj(d, j)
-        s_z[j] = MultiPauliMeasurement(b, ['Z' for kk in 1:length(b)])
+        s_x[j] = rotated_surface_x_m(d, j)
+        s_z[j] = rotated_surface_z_m(d, j)
+        #b = _xadj(d, j)
+        #s_x[j] = MultiPauliMeasurement(b, ['X' for kk in 1:length(b)])
+        #b = _zadj(d, j)
+        #s_z[j] = MultiPauliMeasurement(b, ['Z' for kk in 1:length(b)])
     end
 
     ancilla = [d*d+1, d*d+2, d*d+3, d*d+4, d*d+5]
