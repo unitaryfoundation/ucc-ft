@@ -6,6 +6,7 @@ import math
 import openqasm3
 import openqasm3.ast as ast
 from openqasm3.printer import Printer, PrinterState
+from openqasm3 import properties
 from typing import List, Sequence, Any
 import io
 from dataclasses import dataclass
@@ -35,6 +36,7 @@ class QProgVisitor(Printer):
         super().__init__(stream)
         self.func_names = set()
         self.global_decls = set()
+        self.extern_decls = set()
 
     def visit_Include(self, node: ast.Include, context: PrinterState) -> None:
         # Ignore the include statement when converting to Julia
@@ -90,6 +92,8 @@ class QProgVisitor(Printer):
             self.stream.write(f"bv_val(ctx, {node.value}, 1)")
         elif isinstance(node, ast.QuantumMeasurement):
             self.visit(node)
+        elif isinstance(node, ast.FunctionCall):
+            self.visit(node)
         else:
             raise ValueError(
                 f"Unsupported bit initialization expression type: {type(node)}"
@@ -110,7 +114,11 @@ class QProgVisitor(Printer):
                 self._visit_bit_init(node.init_expression, context)
             else:
                 self.visit(node.init_expression, context)
-
+        elif isinstance(node.type, ast.BitType) and node.type.size is not None:
+            # If it's an uninitialized array bit type, intialize the Z3 expression holder
+            self.stream.write(" = Vector{Z3.Expr}(undef, ")
+            self.visit(node.type.size, context)
+            self.stream.write(" )")
         self._end_statement(context)
 
     def visit_ConstantDeclaration(
@@ -172,6 +180,54 @@ class QProgVisitor(Printer):
                 self._visit_sequence_and_add_one(index, context, separator=", ")
             self.stream.write("]")
 
+    def visit_IndexExpression(
+        self, node: ast.IndexExpression, context: PrinterState
+    ) -> None:
+        # Julia uses 1-based indexing, but QASM is 0-based.
+        # We need to convert the index to 1-based for Julia.
+
+        if properties.precedence(node.collection) < properties.precedence(node):
+            self.stream.write("(")
+            self.visit(node.collection, context)
+            self.stream.write(")")
+        else:
+            self.visit(node.collection, context)
+        self.stream.write("[")
+        if isinstance(node.index, ast.DiscreteSet):
+            raise ValueError("DiscreteSet indexing not supported in Julia")
+        else:
+            self._visit_sequence_and_add_one(node.index, context, separator=", ")
+        self.stream.write("]")
+
+    def visit_BinaryExpression(
+        self, node: ast.BinaryExpression, context: PrinterState
+    ) -> None:
+        our_precedence = properties.precedence(node)
+        self.stream.write("(")
+        # All AST nodes that are built into BinaryExpression are currently left associative.
+        if properties.precedence(node.lhs) < our_precedence:
+            self.stream.write("(")
+            self.visit(node.lhs, context)
+            self.stream.write(")")
+        else:
+            self.visit(node.lhs, context)
+        ## Translate operator to Julia form
+        # ⊻ is julia xor vs ^ for QASM
+        # ÷ is julia integer division vs / for QASM (so this might not always work)
+        translations = {"^": "⊻", "/": "÷"}
+        if node.op.name in translations:
+            self.stream.write(f" {translations[node.op.name]} ")
+        else:
+            self.stream.write(f" {node.op.name} ")
+
+        if properties.precedence(node.rhs) <= our_precedence:
+            self.stream.write("(")
+            self.visit(node.rhs, context)
+            self.stream.write(")")
+        else:
+            self.visit(node.rhs, context)
+        self.stream.write(")")
+
     def visit_QuantumReset(self, node: ast.QuantumReset, context: PrinterState) -> None:
         self._start_line(context)
         self.stream.write("INIT(")
@@ -194,7 +250,7 @@ class QProgVisitor(Printer):
         self, node: ast.Identifier, context: PrinterState
     ) -> None:
         # Add gates as needed to map to the types in QuantumSE.jl/SymbolicStabilizer.jl
-        translation = {"h": "H", "cx": "CNOT"}
+        translation = {"h": "H", "cx": "CNOT", "z": "Z", "x": "X", "y": "Y"}
         if node.name in translation:
             self.stream.write(translation[node.name])
         else:
@@ -234,6 +290,63 @@ class QProgVisitor(Printer):
         self._visit_statement_list(node.block, context, prefix=" ")
         self.stream.write("end")
         self._end_line(context)
+
+    def _rewrite_conditional_pauli(
+        self, node: ast.BranchingStatement, context: PrinterState
+    ) -> None:
+        # Convert an if (foo) pauli(qubit) to an sX, sZ, sY statement in julia
+        # qprog
+        # e.g. if( syndrome_X) X(qubit) to sX(qubit, syndrome_X)
+        # This is a more efficient way for FT checker code in julia to handle the
+        # measurement
+        self._start_line(context)
+        gate = node.if_block[0].name.name
+        rewrite = {"x": "sX", "y": "sY", "z": "sZ"}
+        assert gate in rewrite.keys()
+        self.stream.write(f"{rewrite[gate]}(")
+        self._visit_sequence(node.if_block[0].qubits, context, separator=", ")
+        self.stream.write(" , ")
+        self.visit(node.condition, context)
+        self.stream.write(")")
+        self._end_line(context)
+
+    def visit_BranchingStatement(
+        self, node: ast.BranchingStatement, context: PrinterState
+    ) -> None:
+        if (
+            len(node.if_block) == 1
+            and isinstance(node.if_block[0], ast.QuantumGate)
+            and len(node.else_block) == 0
+        ):
+            return self._rewrite_conditional_pauli(node, context)
+
+        self._start_line(context)
+        self.stream.write("if (")
+        self.visit(node.condition, context)
+        self.stream.write(")")
+        self._visit_statement_list(node.if_block, context, prefix=" ")
+        if node.else_block:
+            self.stream.write(" else ")
+            # Special handling to flatten a perfectly nested structure of
+            #   if {...} else { if {...} else {...} }
+            # into the simpler
+            #   if {...} else if {...} else {...}
+            # but only if we're allowed to by our options.
+            if (
+                self.chain_else_if
+                and len(node.else_block) == 1
+                and isinstance(node.else_block[0], ast.BranchingStatement)
+                and not node.annotations
+            ):
+                context.skip_next_indent = True
+                self.visit(node.else_block[0], context)
+                # Don't end the line, because the outer-most `if` block will.
+            else:
+                self._visit_statement_list(node.else_block, context)
+                self._end_line(context)
+        else:
+            self.stream.write("end")
+            self._end_line(context)
 
     def visit_QuantumMeasurement(
         self, node: ast.QuantumMeasurement, context: PrinterState
@@ -283,6 +396,12 @@ class QProgVisitor(Printer):
         self._visit_statement_list(node.body, context)
         self.stream.write("end")
         self._end_line(context)
+
+    def visit_ExternDeclaration(
+        self, node: ast.ExternDeclaration, context: PrinterState
+    ) -> None:
+        # Ignore extern declarations
+        self.extern_decls.add(node.name.name)
 
     def visit_WhileLoop(self, node: ast.WhileLoop, context: PrinterState) -> None:
         # converts a QASM while loop to a @qprog repeat-until loop
@@ -362,6 +481,18 @@ class QProgContext:
         Get the handle to the qprog object
         """
         return getattr(jl, func_name)(*args)  # <-- evaluate the qprog to get a handle
+
+
+def qasm_to_qprog_source(qasm_source: str) -> str:
+    """
+    Translate the given qasm_source to the equivalent Julia qprog source
+
+    """
+    res = openqasm3.parse(qasm_source)
+    buff = io.StringIO()
+    visitor = QProgVisitor(buff)
+    visitor.visit(res)
+    return buff.getvalue()
 
 
 def qasm_to_qprog(qasm_source: str) -> QProgContext:
