@@ -82,8 +82,8 @@ def test_check_ft_cat_state_with_different_faults(max_faults, expected_result):
     include "stdgates.inc";
 
     const uint size = __NUM_QUBITS__;
-
-    def cat_prep(qubit[size] state, qubit ancilla) {
+    const uint ancilla_size = 1;
+    def cat_prep(qubit[size] state, qubit[ancilla_size] ancilla) {
 
         bit res = 1;
         while(res != 0) {
@@ -99,10 +99,10 @@ def test_check_ft_cat_state_with_different_faults(max_faults, expected_result):
 
             // Parity check
             for int i in [1:(size-1)] {
-                reset ancilla;
-                cx state[i-1], ancilla;
-                cx state[i], ancilla;
-                bit tmp = measure ancilla;
+                reset ancilla[0];
+                cx state[i-1], ancilla[0];
+                cx state[i], ancilla[0];
+                bit tmp = measure ancilla[0];
                 res = res | tmp;
             }
         }
@@ -146,15 +146,24 @@ def test_check_rotated_surface_CNOT():
     """Test the fault tolerance of the rotated surface code gate circuit."""
     d = 3
     sc = RotatedSurfaceCode(d)
-    julia_source_path = Path(__file__).parent / "rotated_surface_code.jl"
-    julia_source = julia_source_path.read_text()
 
-    qprog_and_context = julia_source_to_qprog(
-        julia_source,
-        "rotated_surface_CNOT",
-        ["rotated_surface_CNOT"],
-    )
-    qprog_and_context.qprog = qprog_and_context.qprog(d)
+    circuit = """
+    OPENQASM 3.0;
+    include "stdgates.inc";
+
+    const uint size = __NUM_QUBITS__;
+
+    def rotated_surface_CNOT(qubit[size] state1, qubit[size] state2) {
+
+        // QASM ranges are inclusive for both start and end
+        for int i in [0:(size-1)] {
+            cx state1[i], state2[i];
+        }
+
+    }
+    """.replace("__NUM_QUBITS__", str(sc.num_qubits))
+
+    qprog_and_context = qasm_to_qprog(circuit)
     result = ft_check_ideal(sc, qprog_and_context, "gate", NERRS=12)
     assert result
 

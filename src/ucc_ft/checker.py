@@ -246,20 +246,21 @@ class QProgVisitor(Printer):
     ) -> None:
         # Here is where we are heavily restricting the QASM3 program format
         # This subroutine is meant to be the main circuit we are checking FT on.
-        # We assume it has a specific format:
-        #  def func(qubit[size] state, qubit ancilla) { BODY }
-        # where state is the logical qubit register and ancilla is any ancilla
-        # needed for measurements or other operations.
+        # We assume it has one of the following specific formats:
+        #  def func(qubit[size1] a, qubit[size2] b) { BODY }
+        # where a and b are quantum registers. Depending on the circuit, they
+        # may represent two logical qubits, or one logical qubit and on set of ancilla qubits.
         if len(node.arguments) != 2:
             raise ValueError("Subroutine must have exactly two arguments")
         if not isinstance(node.arguments[0], ast.QuantumArgument):
             raise ValueError("First argument must be a quantum argument")
         if not isinstance(node.arguments[1], ast.QuantumArgument):
             raise ValueError("Second argument must be a quantum argument")
-        if node.arguments[0].name.name != "state":
-            raise ValueError("First argument must be named 'state'")
-        if node.arguments[1].name.name != "ancilla":
-            raise ValueError("Second argument must be named 'ancilla'")
+
+        first_arg_name = node.arguments[0].name.name
+        first_arg_size = node.arguments[0].size.name
+        second_arg_name = node.arguments[1].name.name
+        second_arg_size = node.arguments[1].size.name
 
         self.func_name = node.name.name
         self._start_line(context)
@@ -269,11 +270,13 @@ class QProgVisitor(Printer):
         self.stream.write(" () begin")
         self._end_line(context)
 
-        ## Declare the arrays for state and ancilla
+        ## Declare the arrays for the arguments
         ## The qprog code has arrays of integer indices for the qubits here
-        self.stream.write(f"  state = [i for i in 1:{node.arguments[0].size.name}]")
+        self.stream.write(f"  {first_arg_name} = [i for i in 1:{first_arg_size}]")
         self._end_line(context)
-        self.stream.write("  ancilla = length(state) + 1")
+        self.stream.write(
+            f"  {second_arg_name} = [i + length({first_arg_name}) for i in 1:{second_arg_size}]"
+        )
         self._end_line(context)
 
         self._visit_statement_list(node.body, context)
