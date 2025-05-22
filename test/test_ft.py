@@ -109,7 +109,10 @@ def test_check_ft_cat_state_with_different_faults(max_faults, expected_result):
     }
     """.replace("__NUM_QUBITS__", str(num_qubits))
 
-    result = ft_check_ideal(code, qasm_to_qprog(circuit), "prepare", NERRS=12)
+    qprog_context = qasm_to_qprog(circuit)
+    result = ft_check_ideal(
+        code, qprog_context.get_qprog("cat_prep"), qprog_context, "prepare", NERRS=12
+    )
     assert result == expected_result
 
 
@@ -121,9 +124,8 @@ def test_check_rotated_surface_prep():
     julia_source_path = Path(__file__).parent / "rotated_surface_code.jl"
     julia_source = julia_source_path.read_text()
 
-    qprog_and_context = julia_source_to_qprog(
+    qprog_context = julia_source_to_qprog(
         julia_source,
-        "rotated_surface_prepare_0",
         [
             "_rotated_surface_prepare_0",
             "rotated_surface_prepare_0",
@@ -137,8 +139,13 @@ def test_check_rotated_surface_prep():
             "mwpm_full",
         ],
     )
-    qprog_and_context.qprog = qprog_and_context.qprog(d)
-    result = ft_check_ideal(sc, qprog_and_context, "prepare", NERRS=12)
+    result = ft_check_ideal(
+        sc,
+        qprog_context.get_qprog("rotated_surface_prepare_0", d),
+        qprog_context,
+        "prepare",
+        NERRS=12,
+    )
     assert result
 
 
@@ -147,24 +154,17 @@ def test_check_rotated_surface_CNOT():
     d = 3
     sc = RotatedSurfaceCode(d)
 
-    circuit = """
-    OPENQASM 3.0;
-    include "stdgates.inc";
+    qasm_source_path = Path(__file__).parent / "rotated_surface_code.qasm"
+    qasm_source = qasm_source_path.read_text()
+    qprog_context = qasm_to_qprog(qasm_source)
 
-    const uint size = __NUM_QUBITS__;
-
-    def rotated_surface_CNOT(qubit[size] state1, qubit[size] state2) {
-
-        // QASM ranges are inclusive for both start and end
-        for int i in [0:(size-1)] {
-            cx state1[i], state2[i];
-        }
-
-    }
-    """.replace("__NUM_QUBITS__", str(sc.num_qubits))
-
-    qprog_and_context = qasm_to_qprog(circuit)
-    result = ft_check_ideal(sc, qprog_and_context, "gate", NERRS=12)
+    result = ft_check_ideal(
+        sc,
+        qprog_context.get_qprog("logical_CNOT"),
+        qprog_context,
+        "gate",
+        NERRS=12,
+    )
     assert result
 
 
@@ -175,9 +175,8 @@ def test_check_rotated_surface_decoder():
     julia_source_path = Path(__file__).parent / "rotated_surface_code.jl"
     julia_source = julia_source_path.read_text()
 
-    qprog_and_context = julia_source_to_qprog(
+    qprog_context = julia_source_to_qprog(
         julia_source,
-        "rotated_surface_decoder",
         [
             "_rotated_surface_decoder",
             "rotated_surface_decoder",
@@ -191,8 +190,13 @@ def test_check_rotated_surface_decoder():
             "mwpm2",
         ],
     )
-    qprog_and_context.qprog = qprog_and_context.qprog(d)
-    result = ft_check_ideal(sc, qprog_and_context, "decoder", NERRS=12)
+    result = ft_check_ideal(
+        sc,
+        qprog_context.get_qprog("rotated_surface_decoder", d),
+        qprog_context,
+        "decoder",
+        NERRS=12,
+    )
     assert result
 
 
@@ -203,9 +207,8 @@ def test_check_rotated_surface_measure():
     julia_source_path = Path(__file__).parent / "rotated_surface_code.jl"
     julia_source = julia_source_path.read_text()
 
-    qprog_and_context = julia_source_to_qprog(
+    qprog_context = julia_source_to_qprog(
         julia_source,
-        "rotated_surface_measurement",
         [
             "rotated_surface_measurement",
             "_rotated_surface_decoder",
@@ -220,19 +223,11 @@ def test_check_rotated_surface_measure():
             "mwpm",
         ],
     )
-    qprog_and_context.qprog = qprog_and_context.qprog(d)
-    result = ft_check_ideal(sc, qprog_and_context, "measurement", NERRS=12)
+    result = ft_check_ideal(
+        sc,
+        qprog_context.get_qprog("rotated_surface_measurement", d),
+        qprog_context,
+        "measurement",
+        NERRS=12,
+    )
     assert result
-
-    # TODO:
-    #  Goal is ft_check(code: StabilizerCode, circuit: CircuitType, gadget_type: GadgetType)
-    #           input_state = input_for(code, gadget_type) <--- can try?
-    #           output_state = run_circuit(input_state) #<--messy for now, do by hand!
-    #           # run the FT check
-    #   Add other gadgets
-    #    Stablizer code -> tableau (Where to add phases?)
-    #    C
-    # --- Custom QPROG
-    #    1. Write QASM, but have external calls or predefined submodules for some elements?
-    #         No multiqubit measur, but yes for cat state prep?
-    #

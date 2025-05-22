@@ -1,4 +1,5 @@
 from .julia import jl
+import juliacall as jc
 from stim import PauliString, Tableau
 import numpy as np
 import math
@@ -32,7 +33,7 @@ class QProgVisitor(Printer):
 
     def __init__(self, stream: io.TextIOBase):
         super().__init__(stream)
-        self.func_name = None
+        self.func_names = set()
         self.global_decls = set()
 
     def visit_Include(self, node: ast.Include, context: PrinterState) -> None:
@@ -262,7 +263,7 @@ class QProgVisitor(Printer):
         second_arg_name = node.arguments[1].name.name
         second_arg_size = node.arguments[1].size.name
 
-        self.func_name = node.name.name
+        self.func_names.add(node.name.name)
         self._start_line(context)
         self.stream.write("@qprog ")
 
@@ -352,48 +353,47 @@ def to_julia_tableau_fmt(
 
 
 @dataclass
-class QProgAndContext:
-    src: str
-    qprog: Any
+class QProgContext:
+    qprog_src: str
     global_decls: dict[str, Any]
 
+    def get_qprog(self, func_name: str, *args) -> jc.AnyValue:
+        """
+        Get the handle to the qprog object
+        """
+        return getattr(jl, func_name)(*args)  # <-- evaluate the qprog to get a handle
 
-def qasm_to_qprog(circuit: str) -> QProgAndContext:
-    """Convert the circuit to a qprog object, evaluating and returning a handle to
-    the julia function object.
+
+def qasm_to_qprog(qasm_source: str) -> QProgContext:
     """
+    Translate the given qasm_source and evaluate it within Julia to
+    generate a qprog with context.
 
+    """
+    jl.seval("using Z3")
     jl.seval("using QuantumSE")
-    res = openqasm3.parse(circuit)
+    res = openqasm3.parse(qasm_source)
     buff = io.StringIO()
     visitor = QProgVisitor(buff)
     visitor.visit(res)
     jl.seval(buff.getvalue())
 
-    return QProgAndContext(
-        src=buff.getvalue(),
-        qprog=getattr(
-            jl, visitor.func_name
-        )(),  # <-- evaluate the qprog to get a handle
+    return QProgContext(
+        qprog_src=buff.getvalue(),
         global_decls={s: getattr(jl, s) for s in visitor.global_decls},
     )
 
 
-def julia_source_to_qprog(
-    src: str, func_name: str, decls: List[str]
-) -> QProgAndContext:
-    """Convert the circuit to a qprog object, evaluating and returning a handle to
-    the julia function object.
+def julia_source_to_qprog(src: str, decls: List[str]) -> QProgContext:
+    """Convert the circuit to a qprog object
 
     Args:
         src (str): The Julia source code to be evaluated.
-        func_name (str): The name of the function handle that is the main QProg entry
         decls (List[str]): A list of declarations to be included in the global context.
     """
     jl.seval(src)
-    return QProgAndContext(
-        src=src,
-        qprog=getattr(jl, func_name),
+    return QProgContext(
+        qprog_src=src,
         global_decls={s: getattr(jl, s) for s in decls},
     )
 
@@ -522,7 +522,8 @@ def error_free_symbolic_output(
 
 def ft_check_ideal(
     code,
-    func_and_context: QProgAndContext,
+    qprog_handle: jc.AnyValue,
+    qprog_context: QProgContext,
     gadget_type: str,
     NERRS: int = 12,  # TODO: Can this be inferred -- basically log2 number of maximum labeled errors (so how many bits to track it all))
 ):
@@ -553,9 +554,7 @@ def ft_check_ideal(
             code, symbolic_input_state, gadget_type, ctx, num_ancilla
         )
 
-        cstate = jl.make_cstate(
-            {"ctx": ctx, "d": code.d} | func_and_context.global_decls
-        )
+        cstate = jl.make_cstate({"ctx": ctx, "d": code.d} | qprog_context.global_decls)
         num_errors = (code.d - 1) // 2
 
         num_main_qubits = code.num_qubits
@@ -577,7 +576,7 @@ def ft_check_ideal(
                 b_num_main_qubits,
             )
 
-        cfg1 = jl.SymConfig(func_and_context.qprog, cstate, symbolic_input_state, NERRS)
+        cfg1 = jl.SymConfig(qprog_handle, cstate, symbolic_input_state, NERRS)
 
         # Generate configurations and check_FT
         cfgs1 = jl.QuantSymEx(cfg1)
