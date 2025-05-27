@@ -75,8 +75,10 @@ def test_check_ft_cat_state_with_different_faults(max_faults, expected_result):
     include "stdgates.inc";
 
     const uint size = __NUM_QUBITS__;
-    const uint ancilla_size = 1;
-    def cat_prep(qubit[size] state, qubit[ancilla_size] ancilla) {
+    qubit[size] state;
+    qubit ancilla;
+
+    def cat_prep() {
 
         bit res = 1;
         while(res != 0) {
@@ -92,10 +94,10 @@ def test_check_ft_cat_state_with_different_faults(max_faults, expected_result):
 
             // Parity check
             for int i in [1:(size-1)] {
-                reset ancilla[0];
-                cx state[i-1], ancilla[0];
-                cx state[i], ancilla[0];
-                bit tmp = measure ancilla[0];
+                reset ancilla;
+                cx state[i-1], ancilla;
+                cx state[i], ancilla;
+                bit tmp = measure ancilla;
                 res = res | tmp;
             }
         }
@@ -128,6 +130,7 @@ def test_check_rotated_surface_prep():
             "_xadj",
             "_zadj",
             "prepare_cat",
+            "prepare_cat_for_z",
             "generate_cat_verification",
             "mwpm_full",
         ],
@@ -151,7 +154,7 @@ def test_check_rotated_surface_prep_qasm():
     qasm_source = qasm_source_path.read_text()
     qprog_src = qasm_to_qprog_source(qasm_source)
 
-    julia_source_path = Path(__file__).parent / "rotated_surface_code.jl"
+    julia_source_path = Path(__file__).parent / "rotated_surface_code.in_translation.jl"
     julia_source = julia_source_path.read_text()
 
     qprog_context = julia_source_to_qprog(
@@ -163,13 +166,17 @@ def test_check_rotated_surface_prep_qasm():
             "rotated_surface_lz_m",
             "_xadj",
             "_zadj",
+            "prepare_cat_internal",
             "prepare_cat",
             "generate_cat_verification",
             "mwpm_full",
             "mwpm_full_x",
             "mwpm_full_z",
             "data_size",
-            "ancilla_size",
+            "cat_size",
+            "state",
+            "cat",
+            "verify",
             "num_syndromes",
         ],
     )
@@ -189,9 +196,23 @@ def test_check_rotated_surface_CNOT():
     d = 3
     sc = RotatedSurfaceCode(d)
 
-    qasm_source_path = Path(__file__).parent / "rotated_surface_code.qasm"
-    qasm_source = qasm_source_path.read_text()
-    qprog_context = qasm_to_qprog(qasm_source)
+    circuit = """
+    OPENQASM 3.0;
+    include "stdgates.inc";
+
+    const uint d = __d__;
+    const uint data_size = d * d;
+    qubit[data_size] state1;
+    qubit[data_size] state2;
+
+    def logical_CNOT() {
+        // QASM ranges are inclusive for both start and end
+        for int i in [0:(data_size-1)] {
+            cx state1[i], state2[i];
+        }
+    }
+    """.replace("__d__", str(d))
+    qprog_context = qasm_to_qprog(circuit)
 
     result = ft_check_ideal(
         sc,

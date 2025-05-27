@@ -34,6 +34,7 @@ class QProgVisitor(Printer):
 
     def __init__(self, stream: io.TextIOBase):
         super().__init__(stream)
+        self.stream.write("__qubit_count = 0\n")
         self.func_names = set()
         self.global_decls = set()
         self.extern_decls = set()
@@ -250,7 +251,7 @@ class QProgVisitor(Printer):
         self, node: ast.Identifier, context: PrinterState
     ) -> None:
         # Add gates as needed to map to the types in QuantumSE.jl/SymbolicStabilizer.jl
-        translation = {"h": "H", "cx": "CNOT", "z": "Z", "x": "X", "y": "Y"}
+        translation = {"h": "H", "cx": "CNOT", "z": "Z", "x": "X", "y": "Y", "cz": "CZ"}
         if node.name in translation:
             self.stream.write(translation[node.name])
         else:
@@ -326,7 +327,7 @@ class QProgVisitor(Printer):
         self.stream.write(")")
         self._visit_statement_list(node.if_block, context, prefix=" ")
         if node.else_block:
-            self.stream.write(" else ")
+            self.stream.write(" else")
             # Special handling to flatten a perfectly nested structure of
             #   if {...} else { if {...} else {...} }
             # into the simpler
@@ -343,6 +344,7 @@ class QProgVisitor(Printer):
                 # Don't end the line, because the outer-most `if` block will.
             else:
                 self._visit_statement_list(node.else_block, context)
+                self.stream.write("end")
                 self._end_line(context)
         else:
             self.stream.write("end")
@@ -355,42 +357,57 @@ class QProgVisitor(Printer):
         self.visit(node.qubit, context)
         self.stream.write(")")
 
+    def visit_QubitDeclaration(
+        self, node: ast.QubitDeclaration, context: PrinterState
+    ) -> None:
+        self._start_line(context)
+        self.visit(node.qubit, context)
+        self.global_decls.add(node.qubit.name)
+        self.stream.write(" = ")
+
+        # Qubit's in qprog are just indices, so convert these to
+        # arrays, keeping track of the number of qubits defined so far
+        if node.size is not None:
+            if not isinstance(node.size, ast.IntegerLiteral) and not isinstance(
+                node.size, ast.Identifier
+            ):
+                raise ValueError(
+                    "Qubit size must be an integer literal or identifier for translation to @qprog"
+                )
+            self.stream.write("[i + __qubit_count for i in 1:(")
+            self.visit(node.size, context)
+            self.stream.write(")]")
+            self._end_line(context)
+            self.stream.write("__qubit_count += ")
+            self.visit(node.size, context)
+        else:
+            self.stream.write("__qubit_count + 1 ")
+            self._end_line(context)
+            self.stream.write("__qubit_count += 1")
+        # self._end_line(context)
+
+        self._end_statement(context)
+
     def visit_SubroutineDefinition(
         self, node: ast.SubroutineDefinition, context: PrinterState
     ) -> None:
-        # Here is where we are heavily restricting the QASM3 program format
-        # This subroutine is meant to be the main circuit we are checking FT on.
-        # We assume it has one of the following specific formats:
-        #  def func(qubit[size1] a, qubit[size2] b) { BODY }
-        # where a and b are quantum registers. Depending on the circuit, they
-        # may represent two logical qubits, or one logical qubit and on set of ancilla qubits.
-        if len(node.arguments) != 2:
-            raise ValueError("Subroutine must have exactly two arguments")
-        if not isinstance(node.arguments[0], ast.QuantumArgument):
-            raise ValueError("First argument must be a quantum argument")
-        if not isinstance(node.arguments[1], ast.QuantumArgument):
-            raise ValueError("Second argument must be a quantum argument")
-
-        first_arg_name = node.arguments[0].name.name
-        first_arg_size = node.arguments[0].size.name
-        second_arg_name = node.arguments[1].name.name
-        second_arg_size = node.arguments[1].size.name
+        # For now, we are assuming all arguments are classical, with any
+        # quantum registered defined/used as globals.
+        # For classical arguments, we drop the type when converting to Julia @qprog
 
         self.func_names.add(node.name.name)
         self._start_line(context)
         self.stream.write("@qprog ")
 
         self.visit(node.name, context)
-        self.stream.write(" () begin")
-        self._end_line(context)
-
-        ## Declare the arrays for the arguments
-        ## The qprog code has arrays of integer indices for the qubits here
-        self.stream.write(f"  {first_arg_name} = [i for i in 1:{first_arg_size}]")
-        self._end_line(context)
-        self.stream.write(
-            f"  {second_arg_name} = [i + length({first_arg_name}) for i in 1:{second_arg_size}]"
-        )
+        self.stream.write(" (")
+        for arg in node.arguments:
+            if isinstance(arg, ast.QuantumArgument):
+                raise ValueError(
+                    "Quantum arguments are not supported in Julia @qprog, they must be globals"
+                )
+            self.stream.write(arg.name.name)
+        self.stream.write(" ) begin")
         self._end_line(context)
 
         self._visit_statement_list(node.body, context)
