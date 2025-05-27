@@ -15,7 +15,7 @@ from typing import List
 #                 Z
 # ```
 #
-# Note that rotating the above layout by 90 degrees swaps X and Z stabilizers.abs
+# Note that rotating the above layout by 90 degrees swaps X and Z stabilizers
 
 
 class RotatedSurfaceCode:

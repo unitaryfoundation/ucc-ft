@@ -23,6 +23,19 @@ function _zadj(d, idx)
     end
 end
 
+function _zadj_for_qasm(d, idx)
+    @assert idx<=(d*d-1)÷2
+    if idx <= (d-1)÷2
+        return [idx*2-1, idx*2, -1, -1]
+    elseif idx > d*(d-1)÷2
+        return [2*idx, 2*idx+1, -1, -1]
+    else
+        i = (idx-1) ÷ ((d-1)÷2)
+        j = (((idx-1) % ((d-1)÷2)) * 2) + 1 + (i%2)
+        return [(i-1)*d+j, (i-1)*d+j+1, i*d+j, i*d+j+1]
+    end
+end
+
 function _xadj(d, idx)
     res = _zadj(d, idx)
     return [rotate(d,res[i]) for i in 1:length(res)]
@@ -146,7 +159,7 @@ end
 
 end
 
-@qprog prepare_cat (cat_qubits, verify_qubit, d) begin
+@qprog prepare_cat_internal (cat_qubits, verify_qubit, d) begin
 
     @repeat begin
 
@@ -171,29 +184,6 @@ end
 
 end
 
-@qprog prepare_cat_for_z (cat_qubits, verify_qubit, d) begin
-
-    @repeat begin
-
-        INIT(cat_qubits[1])
-        H(cat_qubits[1])
-        for i in 2:length(cat_qubits)
-            INIT(cat_qubits[i])
-            CNOT(cat_qubits[1], cat_qubits[i])
-        end
-
-        res = bv_val(ctx, 0, 1)
-        for i in 1:length(cat_qubits) -1
-            INIT(verify_qubit)
-            CNOT(cat_qubits[i], verify_qubit)
-            CNOT(cat_qubits[i+1], verify_qubit)
-            tmp = DestructiveM(verify_qubit)
-            res = res | tmp
-        end
-
-    end :until (res == bv_val(ctx, 0, 1))
-
-end
 
 function rotated_surface_x_s(d::Integer, idx::Integer)
 	s = zeros(Bool, 2*d*d)
@@ -211,7 +201,7 @@ end
     len_b = length(b)
     cat_qubits = [d*d+i for i in 1:len_b]
     verify_qubit = d*d+len_b+1
-    prepare_cat(cat_qubits, verify_qubit, d)
+    prepare_cat_internal(cat_qubits, verify_qubit, d)
     # More efficient approach just checks outputs given cat preparation gadget
     # already checked
     #CatPreparationMod(cat_qubits)
@@ -237,38 +227,6 @@ function rotated_surface_z_s(d::Integer, idx::Integer)
 	end
 
 	s
-end
-
-@qprog rotated_surface_z_m (d, idx) begin
-    b = _zadj(d, idx)
-
-    len_b = length(b)
-    cat_qubits = [d*d+i for i in 1:len_b]
-    #verify_qubit = d*d+len_b+1
-    verify_qubit = d*d+4+1
-    # More efficient approach just checks outputs given cat preparation gadget
-    # already checked
-    prepare_cat_for_z(cat_qubits, verify_qubit, d)
-    #CatPreparationMod(cat_qubits)
-
-    for i in 1:len_b
-        CZ(cat_qubits[i], b[i])
-    end
-
-    #res = Vector{Z3.Expr}(undef, len_b)
-    res = bv_val(ctx, 0, 1)
-    for i in 1:len_b
-        #res[i] = MX(cat_qubits[i])
-        H(cat_qubits[i])
-        #res[i] = DestructiveM(cat_qubits[i])
-        tmp = DestructiveM(cat_qubits[i])
-        res = res ⊻ tmp
-        H(cat_qubits[i])
-    end
-
-    #res = reduce(⊻, res)
-
-    return res
 end
 
 function rotated_surface_lx(d::Integer)
@@ -392,7 +350,7 @@ end
     cat_qubits = [d*d+i for i in 1:d]
     verify_qubit = d*d+d+1
     # More efficient approach just checks outputs given cat preparation gadget
-    prepare_cat(cat_qubits, verify_qubit, d)
+    prepare_cat_internal(cat_qubits, verify_qubit, d)
     #CatPreparationMod(cat_qubits)
     res = Vector{Z3.Expr}(undef, d)
     for i in 1:d
