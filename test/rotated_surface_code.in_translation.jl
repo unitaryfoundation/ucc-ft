@@ -3,7 +3,13 @@ using Z3
 using LinearAlgebra
 using SimpleGF2
 
+# This one used by QASM, so uses 0-based
 function rotate(d, idx)
+    return rotate_julia(d, idx+1) - 1
+end
+
+# This one used by julia, so uses 1-based
+function rotate_julia(d, idx)
     i = (idx-1)÷d+1
     j = (idx-1)%d+1
     return (d-j)*d+i
@@ -24,7 +30,7 @@ end
 
 function _xadj(d, idx)
     res = _zadj(d, idx)
-    return [rotate(d,res[i]) for i in 1:length(res)]
+    return [rotate_julia(d,res[i]) for i in 1:length(res)]
 end
 
 function mwpm_full_x(ctx, d::Integer, s)
