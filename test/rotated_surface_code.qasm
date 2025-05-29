@@ -54,7 +54,7 @@ extern mwpm_full_z(uint, bit[num_syndromes], bit) -> bit[data_size];
 //  consider proving fault tolerance for those variants.
 
 // FT cat state preparation by verifying parity via extra qubit
-//   Uses num_cat of cat_size qubits
+//   Uses num_cat of the cat qubit register
 def prepare_cat(uint num_cat) {
     bit res = 1;
     while(res != 0) {
@@ -77,34 +77,65 @@ def prepare_cat(uint num_cat) {
     }
 }
 
+// Given a row-major index into the surface grid, return
+// the corresponding row-major index if the grid were rotated 90 degrees
+// So for d = 3 maps [[0,1,2],[3,4,5],[6,7,8]] to [[6,3,0],[7,4,1],[8,5,2]
+//
+
+def rotate(uint idx) -> uint {
+    i = idx / d + 1;
+    j = idx % d + 1;
+    return (d - j) * d + i - 1;
+}
+
 // Measure the i-th X stabilizer
-/*
 def rotated_surface_x_m(uint idx) -> bit {
-
     uint num_cat = 2;
-    prepare_cat_state(cat, verify);
 
-    // boundaries
-    for i in [0:X] {
-        CNOT(cat[i], state[b[i]]);
+    // These indices are hardcoded formulas for now
+    if (idx < (d - 1) / 2) {
+        num_cat = 2;
+        prepare_cat(num_cat);
+
+        cx cat[0], state[rotate(2 * idx)];
+        cx cat[1], state[rotate(2 * idx + 1)];
     }
-    // bulk
+    if (idx >= d * (d-1)/ 2) {
+        num_cat = 2;
+        prepare_cat(num_cat);
 
-    // Measure ancilla in X basis to extract parity
+        cx cat[0], state[rotate(2 * idx + 1)];
+        cx cat[1], state[rotate(2 * (idx + 1))];
+    }
+    if ((idx >= (d-1)/2) && (idx < d * (d-1)/2) ) {
+        num_cat = 4;
+        prepare_cat(num_cat);
+
+        uint i = idx / ((d - 1) / 2);
+        uint j = ((idx % ((d - 1) / 2)) * 2) + 1 + (i % 2);
+
+        cx cat[0], state[rotate((i - 1) * d + j - 1)];
+        cx cat[1], state[rotate((i - 1) * d + j)];
+        cx cat[2], state[rotate(i * d + j - 1)];
+        cx cat[3], state[rotate(i * d + j)];
+    }
+
+    // Measure cat state in X basis to extract parity
     bit res = 0;
-    for i in [0:(num_cat-1)] {
-        h cat[i];
-        bit tmp = measure cat[i];
-        h cat[i];
+    for int c in [0:(num_cat-1)] {
+        h cat[c];
+        bit tmp = measure cat[c];
+        h cat[c];
         res = res ^ tmp;
     }
     return res;
-}*/
+}
 
 // Measure the i-th Z stabilizer
 def rotated_surface_z_m(uint idx) -> bit {
     uint num_cat = 2;
 
+    // These indices are hardcoded for now
     if (idx < (d - 1) / 2) {
         num_cat = 2;
         prepare_cat(num_cat);
@@ -132,9 +163,28 @@ def rotated_surface_z_m(uint idx) -> bit {
         cz cat[3], state[i * d + j];
     }
 
-    // Measure ancilla in X basis to extract parity
+    // Measure cat state in X basis to extract parity
     bit res = 0;
     for int c in [0:(num_cat-1)] {
+        h cat[c];
+        bit tmp = measure cat[c];
+        h cat[c];
+        res = res ^ tmp;
+    }
+    return res;
+}
+
+def rotated_surface_lz_m() -> bit {
+
+    prepare_cat(d);
+
+    for int i in [0:(d-1)] {
+        cz cat[i], state[(d*(2*i+1)-1)/2];
+    }
+
+    // Measure cat state in X basis to extract parity
+    bit res = 0;
+    for int c in [0:(d-1)] {
         h cat[c];
         bit tmp = measure cat[c];
         h cat[c];
@@ -164,8 +214,7 @@ def prepare_state() {
         for int round in [0:(t-1)] {
             for int j in [0:(num_syndromes-1)]{
 
-                // HACK: +1 in second argument to match julia expected indexing!!
-                bit m_x = rotated_surface_x_m(d, j+1);
+                bit m_x = rotated_surface_x_m(j);
                 bit m_z = rotated_surface_z_m(j);
 
                 // Check parity across rounds
@@ -177,7 +226,7 @@ def prepare_state() {
                 s_z[j] = m_z;
             }
 
-            bit m_lz = rotated_surface_lz_m(d);
+            bit m_lz = rotated_surface_lz_m();
             if(round > 0) {
                 res = res | (m_lz ^ s_lz);
             }

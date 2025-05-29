@@ -396,6 +396,14 @@ class QProgVisitor(Printer):
         # For classical arguments, we drop the type when converting to Julia @qprog
 
         self.func_names.add(node.name.name)
+        ## HACK!
+        if node.name.name == "rotate":
+            self._start_line(context)
+            self.stream.write("function rotate(idx)")
+            self._visit_statement_list(node.body, context)
+            self.stream.write("end")
+            self._end_line(context)
+            return
         self._start_line(context)
         self.stream.write("@qprog ")
 

@@ -171,7 +171,7 @@ end
 
 end
 
-@qprog prepare_cat_for_z (cat_qubits, verify_qubit, d) begin
+@qprog prepare_cat_alt (cat_qubits, verify_qubit, d) begin
 
     @repeat begin
 
@@ -210,8 +210,9 @@ end
 
     len_b = length(b)
     cat_qubits = [d*d+i for i in 1:len_b]
-    verify_qubit = d*d+len_b+1
-    prepare_cat(cat_qubits, verify_qubit, d)
+    #verify_qubit = d*d+len_b+1
+    verify_qubit = d*d+4+1
+    prepare_cat_alt(cat_qubits, verify_qubit, d)
     # More efficient approach just checks outputs given cat preparation gadget
     # already checked
     #CatPreparationMod(cat_qubits)
@@ -220,13 +221,19 @@ end
         CNOT(cat_qubits[i], b[i])
     end
 
+    res = bv_val(ctx, 0, 1)
     for i in 1:len_b
-        res[i] = MX(cat_qubits[i])
+        #res[i] = MX(cat_qubits[i])
+        H(cat_qubits[i])
+        #res[i] = DestructiveM(cat_qubits[i])
+        tmp = DestructiveM(cat_qubits[i])
+        res = res ⊻ tmp
+        H(cat_qubits[i])
     end
 
-    res = reduce(⊻, res)
+    #res = reduce(⊻, res)
 
-    res
+    return res
 end
 
 function rotated_surface_z_s(d::Integer, idx::Integer)
@@ -248,7 +255,7 @@ end
     verify_qubit = d*d+4+1
     # More efficient approach just checks outputs given cat preparation gadget
     # already checked
-    prepare_cat_for_z(cat_qubits, verify_qubit, d)
+    prepare_cat_alt(cat_qubits, verify_qubit, d)
     #CatPreparationMod(cat_qubits)
 
     for i in 1:len_b
@@ -392,8 +399,8 @@ end
     cat_qubits = [d*d+i for i in 1:d]
     verify_qubit = d*d+d+1
     # More efficient approach just checks outputs given cat preparation gadget
-    prepare_cat(cat_qubits, verify_qubit, d)
-    #CatPreparationMod(cat_qubits)
+    #prepare_cat(cat_qubits, verify_qubit, d)
+    CatPreparationMod(cat_qubits)
     res = Vector{Z3.Expr}(undef, d)
     for i in 1:d
         CZ(cat_qubits[i], b[i])
@@ -566,23 +573,23 @@ end
 
 #######
 
-@qprog rotated_surface_syndrome_measurement (d) begin
+# @qprog rotated_surface_syndrome_measurement (d) begin
 
-    s_x = Vector{Z3.Expr}(undef, (d*d-1)÷2)
-    s_z = Vector{Z3.Expr}(undef, (d*d-1)÷2)
+#     s_x = Vector{Z3.Expr}(undef, (d*d-1)÷2)
+#     s_z = Vector{Z3.Expr}(undef, (d*d-1)÷2)
 
-    for j in 1:(d*d-1)÷2
-        s_x[j] = rotated_surface_x_m(d, j)
-        s_z[j] = rotated_surface_z_m(d, j)
-        #b = _xadj(d, j)
-        #s_x[j] = MultiPauliMeasurement(b, ['X' for kk in 1:length(b)])
-        #b = _zadj(d, j)
-        #s_z[j] = MultiPauliMeasurement(b, ['Z' for kk in 1:length(b)])
-    end
+#     for j in 1:(d*d-1)÷2
+#         s_x[j] = rotated_surface_x_m(d, j)
+#         s_z[j] = rotated_surface_z_m(d, j)
+#         #b = _xadj(d, j)
+#         #s_x[j] = MultiPauliMeasurement(b, ['X' for kk in 1:length(b)])
+#         #b = _zadj(d, j)
+#         #s_z[j] = MultiPauliMeasurement(b, ['Z' for kk in 1:length(b)])
+#     end
 
-    ancilla = [d*d+1, d*d+2, d*d+3, d*d+4, d*d+5]
-    for i in 1:5
-        INIT(ancilla[i])
-    end
+#     ancilla = [d*d+1, d*d+2, d*d+3, d*d+4, d*d+5]
+#     for i in 1:5
+#         INIT(ancilla[i])
+#     end
 
-end
+# end
