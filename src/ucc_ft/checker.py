@@ -668,6 +668,18 @@ def error_free_symbolic_output(
     pass
 
 
+def ft_check_ideal_qasm(code, qasm: str, qasm_func: str, gadget_type: str):
+    qprog_context = qasm_to_qprog(qasm)
+
+    return ft_check_ideal(
+        code,
+        qprog_context.get_qprog(qasm_func),
+        qprog_context,
+        "gate",
+        NERRS=12,
+    )
+
+
 def ft_check_ideal(
     code,
     qprog_handle: jc.AnyValue,
