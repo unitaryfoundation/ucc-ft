@@ -909,8 +909,8 @@ function varid()
 end
 
 function inject_symbolic_error(q::SymStabilizerState, target_qubit::Int)
-    xerr_symb = alloc_symb(q.ctx, "symb_Xerror")
-    zerr_symb = alloc_symb(q.ctx, "symb_Zerror")
+    xerr_symb = alloc_symb(q.ctx, "symb_Xerror_Q$(target_qubit)")
+    zerr_symb = alloc_symb(q.ctx, "symb_Zerror_Q$(target_qubit)")
 
     #sX!(q, target_qubit, xerr_symb & ~zerr_symb)
     #sY!(q, target_qubit, xerr_symb & zerr_symb)
@@ -922,7 +922,7 @@ function inject_symbolic_error(q::SymStabilizerState, target_qubit::Int)
 end
 
 function inject_symbolic_Xerror(q::SymStabilizerState, target_qubit::Int)
-    xerr_symb = alloc_symb(q.ctx, "symb_Xerror")
+    xerr_symb = alloc_symb(q.ctx, "symb_Xerror_Q$(target_qubit)")
     #zerr_symb = alloc_symb(q, "symb_Zerror")
 
     #sX!(q, target_qubit, xerr_symb & ~zerr_symb)
@@ -936,7 +936,7 @@ end
 
 function inject_symbolic_Zerror(q::SymStabilizerState, target_qubit::Int)
     #xerr_symb = alloc_symb(q, "symb_Xerror")
-    zerr_symb = alloc_symb(q.ctx, "symb_Zerror")
+    zerr_symb = alloc_symb(q.ctx, "symb_Zerror_Q$(target_qubit)")
 
     #sX!(q, target_qubit, xerr_symb & ~zerr_symb)
     #sY!(q, target_qubit, xerr_symb & zerr_symb)
@@ -950,8 +950,8 @@ end
 
 
 function inject_symbolic_error_SymPauli(q::SymStabilizerState, target_qubit::Int, control_sym::Z3.Expr)
-    xerr_symb = alloc_symb(q.ctx, "symb_Xerror")
-    zerr_symb = alloc_symb(q.ctx, "symb_Zerror")
+    xerr_symb = alloc_symb(q.ctx, "symb_Xerror_Q$(target_qubit)")
+    zerr_symb = alloc_symb(q.ctx, "symb_Zerror_Q$(target_qubit)")
 
     #sX!(q, target_qubit, xerr_symb & ~zerr_symb)
     #sY!(q, target_qubit, xerr_symb & zerr_symb)
@@ -1091,6 +1091,14 @@ function check_FT(q1::SymStabilizerState, q2::SymStabilizerState, assumptions::T
 
         if ~_equal(q1.xzs, q2.xzs, q1.num_qubits+1:2*q1.num_qubits) #q1.num_qubits+1-q1.num_ancilla:2*q1.num_qubits-q1.num_ancilla)#ranges)
             @info "The Stabilizer does not match, the program is wrong even without error insertion"
+            println("q1:")
+            print_full_tableau(q1)
+            println("q2:")
+            print_full_tableau(q2)
+            println("q1.xzs: ")
+            println(output_stabilizer_tableau(q1))
+            println("q2.xzs: ")
+            println(output_stabilizer_tableau(q2))
             return false
         end
 
