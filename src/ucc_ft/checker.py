@@ -688,7 +688,9 @@ def error_free_symbolic_output(
     pass
 
 
-def ft_check_ideal_qasm(code, qasm: str, qasm_func: str, gadget_type: str):
+def ft_check_ideal_qasm(
+    code, qasm: str, qasm_func: str, gadget_type: str, num_ancilla: int = None
+):
     qprog_context = qasm_to_qprog(qasm)
 
     return ft_check_ideal(
@@ -697,6 +699,7 @@ def ft_check_ideal_qasm(code, qasm: str, qasm_func: str, gadget_type: str):
         qprog_context,
         gadget_type,
         NERRS=12,
+        num_ancilla=num_ancilla,
     )
 
 
@@ -706,6 +709,7 @@ def ft_check_ideal(
     qprog_context: QProgContext,
     gadget_type: str,
     NERRS: int = 12,  # TODO: Can this be inferred -- basically log2 number of maximum labeled errors (so how many bits to track it all))
+    num_ancilla: int = None,  # TODO: Can this be inferred from the circuit (e.g. number of ancilla qubits used in the circuit?
 ):
     """
     Check if the given circuit is fault tolerant for the given code and gadget type.
@@ -714,7 +718,8 @@ def ft_check_ideal(
     jl.seval("using QuantumSE")
     ctx = jl.Context()
 
-    num_ancilla = code.d * code.d - 1  # TODO: infer from circuit?
+    if num_ancilla is None:
+        num_ancilla = code.d * code.d - 1  # TODO: infer from circuit?
 
     state_builders = {
         "prepare": _prepare_states,
