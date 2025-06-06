@@ -908,9 +908,14 @@ function varid()
     return __allocvarid
 end
 
+function reset_varid()
+    global __allocvarid
+    __allocvarid = 0
+end
+
 function inject_symbolic_error(q::SymStabilizerState, target_qubit::Int)
-    xerr_symb = alloc_symb(q.ctx, "symb_Xerror")
-    zerr_symb = alloc_symb(q.ctx, "symb_Zerror")
+    xerr_symb = alloc_symb(q.ctx, "symb_Xerror_Q$(target_qubit)")
+    zerr_symb = alloc_symb(q.ctx, "symb_Zerror_Q$(target_qubit)")
 
     #sX!(q, target_qubit, xerr_symb & ~zerr_symb)
     #sY!(q, target_qubit, xerr_symb & zerr_symb)
@@ -922,7 +927,7 @@ function inject_symbolic_error(q::SymStabilizerState, target_qubit::Int)
 end
 
 function inject_symbolic_Xerror(q::SymStabilizerState, target_qubit::Int)
-    xerr_symb = alloc_symb(q.ctx, "symb_Xerror")
+    xerr_symb = alloc_symb(q.ctx, "symb_Xerror_Q$(target_qubit)")
     #zerr_symb = alloc_symb(q, "symb_Zerror")
 
     #sX!(q, target_qubit, xerr_symb & ~zerr_symb)
@@ -936,7 +941,7 @@ end
 
 function inject_symbolic_Zerror(q::SymStabilizerState, target_qubit::Int)
     #xerr_symb = alloc_symb(q, "symb_Xerror")
-    zerr_symb = alloc_symb(q.ctx, "symb_Zerror")
+    zerr_symb = alloc_symb(q.ctx, "symb_Zerror_Q$(target_qubit)")
 
     #sX!(q, target_qubit, xerr_symb & ~zerr_symb)
     #sY!(q, target_qubit, xerr_symb & zerr_symb)
@@ -950,8 +955,8 @@ end
 
 
 function inject_symbolic_error_SymPauli(q::SymStabilizerState, target_qubit::Int, control_sym::Z3.Expr)
-    xerr_symb = alloc_symb(q.ctx, "symb_Xerror")
-    zerr_symb = alloc_symb(q.ctx, "symb_Zerror")
+    xerr_symb = alloc_symb(q.ctx, "symb_Xerror_Q$(target_qubit)")
+    zerr_symb = alloc_symb(q.ctx, "symb_Zerror_Q$(target_qubit)")
 
     #sX!(q, target_qubit, xerr_symb & ~zerr_symb)
     #sY!(q, target_qubit, xerr_symb & zerr_symb)
@@ -981,13 +986,14 @@ end
 
 """return `true` if SAT"""
 function smt_solve_z3(slv::Solver)
-    #@info "z3 is used as smt solver"
+    @info "z3 is used as smt solver"
 
     res = check(slv)
 
     #@info "z3 has solved the problem"
 
     if res == Z3.sat
+        @info "z3 solved the problem as SAT"
         open("query.smt2", "w") do io
             println(io, to_smt2(slv, "sat"))
         end
@@ -998,6 +1004,7 @@ function smt_solve_z3(slv::Solver)
 
         return true
     else
+        @info "z3 failed to solve the problem as SAT"
         return false
     end
 end
@@ -1091,6 +1098,14 @@ function check_FT(q1::SymStabilizerState, q2::SymStabilizerState, assumptions::T
 
         if ~_equal(q1.xzs, q2.xzs, q1.num_qubits+1:2*q1.num_qubits) #q1.num_qubits+1-q1.num_ancilla:2*q1.num_qubits-q1.num_ancilla)#ranges)
             @info "The Stabilizer does not match, the program is wrong even without error insertion"
+            println("q1:")
+            print_full_tableau(q1)
+            println("q2:")
+            print_full_tableau(q2)
+            println("q1.xzs: ")
+            println(output_stabilizer_tableau(q1))
+            println("q2.xzs: ")
+            println(output_stabilizer_tableau(q2))
             return false
         end
 
