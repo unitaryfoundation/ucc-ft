@@ -695,7 +695,7 @@ def ft_check_ideal_qasm(code, qasm: str, qasm_func: str, gadget_type: str):
         code,
         qprog_context.get_qprog(qasm_func),
         qprog_context,
-        "gate",
+        gadget_type,
         NERRS=12,
     )
 
