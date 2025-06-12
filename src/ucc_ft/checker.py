@@ -488,6 +488,26 @@ def to_julia_tableau_fmt(
     return julia_stabilizer
 
 
+def to_stim_paulis(
+    julia_tableau: np.ndarray,
+) -> List[PauliString]:
+    """
+    Converts a Julia boolean matrix format to a Stim stabilizer Tableau.
+
+    The Julia format represents stabilizers as a boolean matrix where rows are
+    generators and columns are [X_part | Z_part].
+
+    """
+    num_qubits = julia_tableau.shape[1] // 2
+    xpart = julia_tableau[:, 0:num_qubits]
+    zpart = julia_tableau[:, num_qubits:]
+
+    return [
+        PauliString.from_numpy(xs=xpart[i], zs=zpart[i])
+        for i in range(julia_tableau.shape[0])
+    ]
+
+
 @dataclass
 class QProgContext:
     qprog_src: str

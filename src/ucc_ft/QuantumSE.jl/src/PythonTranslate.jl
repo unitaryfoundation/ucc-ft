@@ -15,7 +15,6 @@ function from_stabilizer_py(num_main_qubits::Integer, Stabilizer::AbstractArray,
     from_stabilizer(num_main_qubits, convert(Matrix{Bool},Stabilizer), phases, ctx, num_ancilla)
 end
 
-
 function make_cstate(d::AbstractDict{Any, Any})
     CState(Symbol(k) => v for (k, v) in d)
 end
@@ -30,4 +29,8 @@ function inject_errors(state::SymStabilizerState, num_main_qubits::Int64, ctx::Z
         nerrs_input += zeroext(ctx, inject_symbolic_error(state, j), b_num_main_qubits)
     end
     return nerrs_input
+end
+
+function to_stabilizer_py(state::SymStabilizerState)
+    return Matrix{Bool}(output_stabilizer_tableau(state))
 end

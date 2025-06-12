@@ -23,7 +23,7 @@ include("Sampler.jl")
 export Sampler, parse_stim
 
 include("PythonTranslate.jl")
-export from_stabilizer_py, make_cstate, check_FT_py
+export from_stabilizer_py, to_stabilizer_py, make_cstate, check_FT_py
 
 using PrecompileTools
 using Z3
