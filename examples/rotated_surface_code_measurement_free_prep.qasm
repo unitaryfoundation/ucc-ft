@@ -62,4 +62,8 @@ def prepare_state() {
     cx data[2], data[1];
     cx data[6], data[7];
 
+    // Looks like fails on cx data[6], data[7] with
+    // X and Z error on data[6] and Z error on data[7]
+    // [9, 1, 3] code, so t = 1 correctable error
+
 }

@@ -908,6 +908,11 @@ function varid()
     return __allocvarid
 end
 
+function reset_varid()
+    global __allocvarid
+    __allocvarid = 0
+end
+
 function inject_symbolic_error(q::SymStabilizerState, target_qubit::Int)
     xerr_symb = alloc_symb(q.ctx, "symb_Xerror_Q$(target_qubit)")
     zerr_symb = alloc_symb(q.ctx, "symb_Zerror_Q$(target_qubit)")
@@ -981,13 +986,14 @@ end
 
 """return `true` if SAT"""
 function smt_solve_z3(slv::Solver)
-    #@info "z3 is used as smt solver"
+    @info "z3 is used as smt solver"
 
     res = check(slv)
 
     #@info "z3 has solved the problem"
 
     if res == Z3.sat
+        @info "z3 solved the problem as SAT"
         open("query.smt2", "w") do io
             println(io, to_smt2(slv, "sat"))
         end
@@ -998,6 +1004,7 @@ function smt_solve_z3(slv::Solver)
 
         return true
     else
+        @info "z3 failed to solve the problem as SAT"
         return false
     end
 end
