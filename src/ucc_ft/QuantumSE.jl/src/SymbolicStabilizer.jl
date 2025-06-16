@@ -787,8 +787,8 @@ end
 
 function generate_cat_verification(d, num_cat_qubits)
 
-    println("dddddddd")
-    println(d)
+    #println("dddddddd")
+    #println(d)
 
     if num_cat_qubits < 4
         return []
