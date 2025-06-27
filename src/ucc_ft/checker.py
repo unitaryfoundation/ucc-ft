@@ -594,7 +594,7 @@ def _measure_states(code, ctx, num_ancilla):
     # Measurement states are the symbolic logical-Z states
     stabilizers = code.stabilizers()
     phases = [jl.bv_val(ctx, 0, 1) for _ in range(len(stabilizers))]
-    stabilizers = stabilizers + [code.logical_z()]
+    stabilizers = stabilizers + code.logical_z()
     phases = phases + [jl.bv_const(ctx, "lz", 1)]
     return [
         _make_symbolic_state(code.num_qubits, ctx, num_ancilla, stabilizers, phases)
@@ -604,10 +604,10 @@ def _measure_states(code, ctx, num_ancilla):
 def _correct_states(code, ctx, num_ancilla):
     # Error correction states are +1 logical-X and the symbolic logical-Z states
     # |+> state
-    stabilizers_x = code.stabilizers() + [code.logical_x()]
+    stabilizers_x = code.stabilizers() + code.logical_x()
     phases_x = [jl.bv_val(ctx, 0, 1) for _ in range(len(stabilizers_x))]
     # |0/1> state
-    stabilizers_z = code.stabilizers() + [code.logical_z()]
+    stabilizers_z = code.stabilizers() + code.logical_z()
     phases_z = [jl.bv_val(ctx, 0, 1) for _ in range(len(code.stabilizers()))] + [
         jl.bv_const(ctx, "lz", 1)
     ]
@@ -632,16 +632,16 @@ def _gate2_states(code, ctx, num_ancilla):
     code_stabilizers_2q = [
         PauliString("I" * num_qubits) + s for s in code.stabilizers()
     ]
-    logical_z_2q = PauliString("I" * num_qubits) + code.logical_z()
-    logical_x_2q = PauliString("I" * num_qubits) + code.logical_x()
+    logical_z_2q = [PauliString("I" * num_qubits) + z for z in code.logical_z()]
+    logical_x_2q = [PauliString("I" * num_qubits) + x for x in code.logical_x()]
     # LX state
     stabilizers_lx = (
-        code_stabilizers_1q + [logical_x_1q] + code_stabilizers_2q + [logical_x_2q]
+        code_stabilizers_1q + logical_x_1q + code_stabilizers_2q + logical_x_2q
     )
     phases_lx = [jl.bv_val(ctx, 0, 1) for _ in range(len(stabilizers_lx))]
     # LZ state
     stabilizers_lz = (
-        code_stabilizers_1q + [logical_z_1q] + code_stabilizers_2q + [logical_z_2q]
+        code_stabilizers_1q + logical_z_1q + code_stabilizers_2q + logical_z_2q
     )
     phases_lz = (
         [jl.bv_val(ctx, 0, 1) for _ in range(len(code_stabilizers_1q))]
@@ -688,7 +688,7 @@ def error_free_symbolic_output(
     pass
 
 
-def ft_check_ideal_qasm(code, qasm: str, qasm_func: str, gadget_type: str):
+def ft_check_ideal_qasm(code, qasm: str, qasm_func: str, gadget_type: str, num_ancilla: int| None = None,):
     qprog_context = qasm_to_qprog(qasm)
 
     return ft_check_ideal(
@@ -696,6 +696,7 @@ def ft_check_ideal_qasm(code, qasm: str, qasm_func: str, gadget_type: str):
         qprog_context.get_qprog(qasm_func),
         qprog_context,
         gadget_type,
+        num_ancilla,
         NERRS=12,
     )
 
@@ -705,6 +706,7 @@ def ft_check_ideal(
     qprog_handle: jc.AnyValue,
     qprog_context: QProgContext,
     gadget_type: str,
+    num_ancilla: int| None = None,
     NERRS: int = 12,  # TODO: Can this be inferred -- basically log2 number of maximum labeled errors (so how many bits to track it all))
 ):
     """
@@ -714,7 +716,8 @@ def ft_check_ideal(
     jl.seval("using QuantumSE")
     ctx = jl.Context()
 
-    num_ancilla = code.d * code.d - 1  # TODO: infer from circuit?
+    if num_ancilla is None:    
+        num_ancilla = code.d * code.d - 1  # TODO: infer from circuit?
 
     state_builders = {
         "prepare": _prepare_states,

@@ -94,11 +94,11 @@ class RotatedSurfaceCode:
 
     def logical_x(self) -> PauliString:
         """Return the logical X operator for the rotated surface code of distance d."""
-        return PauliString("*".join([f"X{j}" for j in self.logical_x_idx()]))
+        return [PauliString("*".join([f"X{j}" for j in self.logical_x_idx()]))]
 
     def logical_z(self) -> PauliString:
         """Return the logical Z operator for the rotated surface code of distance d."""
-        return PauliString("*".join([f"Z{j}" for j in self.logical_z_idx()]))
+        return [PauliString("*".join([f"Z{j}" for j in self.logical_z_idx()]))]
 
     def logical_prep_stabilizer(self) -> PauliString:
         """The prepared state is |0>_L, the +1 eigenstate of the logical Z operator."""
