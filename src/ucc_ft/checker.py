@@ -688,7 +688,13 @@ def error_free_symbolic_output(
     pass
 
 
-def ft_check_ideal_qasm(code, qasm: str, qasm_func: str, gadget_type: str, num_ancilla: int| None = None,):
+def ft_check_ideal_qasm(
+    code,
+    qasm: str,
+    qasm_func: str,
+    gadget_type: str,
+    num_ancilla: int | None = None,
+):
     qprog_context = qasm_to_qprog(qasm)
 
     return ft_check_ideal(
@@ -706,7 +712,7 @@ def ft_check_ideal(
     qprog_handle: jc.AnyValue,
     qprog_context: QProgContext,
     gadget_type: str,
-    num_ancilla: int| None = None,
+    num_ancilla: int | None = None,
     NERRS: int = 12,  # TODO: Can this be inferred -- basically log2 number of maximum labeled errors (so how many bits to track it all))
 ):
     """
@@ -716,7 +722,7 @@ def ft_check_ideal(
     jl.seval("using QuantumSE")
     ctx = jl.Context()
 
-    if num_ancilla is None:    
+    if num_ancilla is None:
         num_ancilla = code.d * code.d - 1  # TODO: infer from circuit?
 
     state_builders = {

@@ -5,13 +5,13 @@ def test_z_stabilizer():
     # Test for m = 2, i.e. [4, 2, 2]
     ic = IcebergCode(2)
     assert ic.z_stabilizer_idx() == [0, 1, 2, 3]
- 
+
 
 def test_x_stabilizer():
     # Test for m = 2, i.e. [4, 2, 2]
     ic = IcebergCode(2)
     assert ic.x_stabilizer_idx() == [0, 1, 2, 3]
-    
+
 
 def test_logical_x_idx():
     assert IcebergCode(2).logical_x_idx() == [[1, 2], [1, 3]]
