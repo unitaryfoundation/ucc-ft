@@ -688,7 +688,7 @@ def error_free_symbolic_output(
     pass
 
 
-def ft_check_ideal_qasm(
+def ft_check(
     code, qasm: str, qasm_func: str, gadget_type: str, num_ancilla: int = None
 ):
     qprog_context = qasm_to_qprog(qasm)
