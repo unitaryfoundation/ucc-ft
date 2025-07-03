@@ -688,9 +688,17 @@ def error_free_symbolic_output(
     pass
 
 
+class FTCheckResult:
+    def __init__(self, is_ft: bool):
+        self.is_ft = is_ft
+
+    def __bool__(self):
+        return self.is_ft
+
+
 def ft_check(
     code, qasm: str, qasm_func: str, gadget_type: str, num_ancilla: int = None
-):
+) -> FTCheckResult:
     qprog_context = qasm_to_qprog(qasm)
 
     return ft_check_ideal(
@@ -710,7 +718,7 @@ def ft_check_ideal(
     gadget_type: str,
     NERRS: int = 12,  # TODO: Can this be inferred -- basically log2 number of maximum labeled errors (so how many bits to track it all))
     num_ancilla: int = None,  # TODO: Can this be inferred from the circuit (e.g. number of ancilla qubits used in the circuit?
-):
+) -> FTCheckResult:
     """
     Check if the given circuit is fault tolerant for the given code and gadget type.
     """
@@ -788,5 +796,5 @@ def ft_check_ideal(
                 meas_result=meas_result,
                 meas_gt=meas_gt,
             ):
-                return False
-    return True
+                return FTCheckResult(False)
+    return FTCheckResult(True)
