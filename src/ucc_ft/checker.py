@@ -688,9 +688,17 @@ def error_free_symbolic_output(
     pass
 
 
+@dataclass
+class FTErrorLocation:
+    source_line: int
+    qubit_index: int
+    error_type: str
+
+
 class FTCheckResult:
-    def __init__(self, is_ft: bool):
+    def __init__(self, is_ft: bool, error_cause: FTErrorLocation = None):
         self.is_ft = is_ft
+        self.error_cause = error_cause
 
     def __bool__(self):
         return self.is_ft
@@ -796,5 +804,12 @@ def ft_check_ideal(
                 meas_result=meas_result,
                 meas_gt=meas_gt,
             ):
+                # Extract the error information and relate back to the line in the code
+                # err_location = FTErrorLocation(
+                #     source_line=,
+                #     qubit_index=cfg.qubit_index,
+                #     error_type=cfg.error_type,
+                # )
+                # return FTCheckResult(False, err_location)
                 return FTCheckResult(False)
     return FTCheckResult(True)
