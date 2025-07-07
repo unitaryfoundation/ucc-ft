@@ -108,7 +108,7 @@ def test_check_ft_cat_state_with_different_faults(max_faults, expected_result):
     result = ft_check_ideal(
         code, qprog_context.get_qprog("cat_prep"), qprog_context, "prepare", NERRS=12
     )
-    assert result == expected_result
+    assert result.is_ft == expected_result
 
 
 def test_check_rotated_surface_prep():
