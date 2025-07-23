@@ -6,7 +6,6 @@ using Z3
 
 function from_stabilizer_py(num_main_qubits::Integer, Stabilizer::AbstractArray, phases::AbstractVector, ctx::Z3.Context, num_ancilla::Integer=0)
     shape = size(Stabilizer)
-    println("shape: ", shape)
     @assert num_main_qubits == shape[1] "Stabilizer must have the same number of rows as num_main_qubits"
 
     phases = convert(Vector{Z3.Expr}, phases)

@@ -781,7 +781,12 @@ def parse_smt_errors(output: str) -> list[FTErrorLocation]:
 
 
 def ft_check(
-    code, qasm: str, qasm_func: str, gadget_type: str, num_ancilla: int = None
+    code,
+    qasm: str,
+    qasm_func: str,
+    gadget_type: str,
+    num_ancilla: int = None,
+    verbose: bool = False,
 ) -> FTCheckResult:
     qprog_context = qasm_to_qprog(qasm)
 
@@ -792,6 +797,7 @@ def ft_check(
         gadget_type,
         NERRS=12,
         num_ancilla=num_ancilla,
+        verbose=verbose,
     )
 
 
@@ -802,6 +808,7 @@ def ft_check_ideal(
     gadget_type: str,
     NERRS: int = 12,  # TODO: Can this be inferred -- basically log2 number of maximum labeled errors (so how many bits to track it all))
     num_ancilla: int = None,  # TODO: Can this be inferred from the circuit (e.g. number of ancilla qubits used in the circuit?
+    verbose: bool = False,
 ) -> FTCheckResult:
     """
     Check if the given circuit is fault tolerant for the given code and gadget type.
@@ -853,7 +860,7 @@ def ft_check_ideal(
                 b_num_main_qubits,
             )
 
-        cfg1 = jl.SymConfig(qprog_handle, cstate, symbolic_input_state, NERRS)
+        cfg1 = jl.SymConfig(qprog_handle, cstate, symbolic_input_state, NERRS, verbose)
 
         # Generate configurations and check_FT
         cfgs1 = jl.QuantSymEx(cfg1)
