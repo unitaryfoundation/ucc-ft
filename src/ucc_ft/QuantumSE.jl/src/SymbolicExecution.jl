@@ -24,16 +24,18 @@ mutable struct SymConfig
     nerrs::Z3.Expr
     source_line::Integer
 
+    verbose::Bool
+
     SymConfig(num_qubits::Integer, NERRS::Integer) = begin
         ctx = Z3.Context()
-        new(QEmpty, CState(), SymStabilizerState(num_qubits, ctx), SymProbs(), (bool_val(ctx, true), bool_val(ρ.ctx, true), bool_val(ρ.ctx, true)), ctx, NERRS, bv_val(ctx, 0, NERRS), -1)
+        new(QEmpty, CState(), SymStabilizerState(num_qubits, ctx), SymProbs(), (bool_val(ctx, true), bool_val(ρ.ctx, true), bool_val(ρ.ctx, true)), ctx, NERRS, bv_val(ctx, 0, NERRS), -1, false)
     end
 
-    SymConfig(S::QProg, σ::CState, ρ::AbstractSymQuantumState, P::SymProbs, ϕ::Tuple{Z3.Expr,Z3.Expr,Z3.Expr}, ctx::Z3.Context, NERRS::Integer, nerrs::Z3.Expr, source_line::Integer) = new(copy(S), copy(σ), copy(ρ), copy(P), (ϕ[1], ϕ[2], ϕ[3]), ctx, NERRS, nerrs, source_line)
+    SymConfig(S::QProg, σ::CState, ρ::AbstractSymQuantumState, P::SymProbs, ϕ::Tuple{Z3.Expr,Z3.Expr,Z3.Expr}, ctx::Z3.Context, NERRS::Integer, nerrs::Z3.Expr, source_line::Integer, verbose::Bool) = new(copy(S), copy(σ), copy(ρ), copy(P), (ϕ[1], ϕ[2], ϕ[3]), ctx, NERRS, nerrs, source_line, verbose)
 
-    SymConfig(S::QProg, σ::CState, ρ::AbstractSymQuantumState, NERRS::Integer) = SymConfig(S, σ, ρ, SymProbs(), (bool_val(ρ.ctx, true), bool_val(ρ.ctx, true), bool_val(ρ.ctx, true)), ρ.ctx, NERRS, bv_val(ρ.ctx, 0, NERRS), -1)
+    SymConfig(S::QProg, σ::CState, ρ::AbstractSymQuantumState, NERRS::Integer, verbose::Bool=false) = SymConfig(S, σ, ρ, SymProbs(), (bool_val(ρ.ctx, true), bool_val(ρ.ctx, true), bool_val(ρ.ctx, true)), ρ.ctx, NERRS, bv_val(ρ.ctx, 0, NERRS), -1, verbose)
 
-    SymConfig(cfg::SymConfig) = SymConfig(cfg.S, cfg.σ, cfg.ρ, cfg.P, (cfg.ϕ[1], cfg.ϕ[2], cfg.ϕ[3]), cfg.ctx, cfg.NERRS, cfg.nerrs, cfg.source_line)
+    SymConfig(cfg::SymConfig) = SymConfig(cfg.S, cfg.σ, cfg.ρ, cfg.P, (cfg.ϕ[1], cfg.ϕ[2], cfg.ϕ[3]), cfg.ctx, cfg.NERRS, cfg.nerrs, cfg.source_line, cfg.verbose)
 end
 
 Base.copy(cfg::SymConfig) = SymConfig(cfg)
@@ -89,11 +91,12 @@ function QuantSymEx(cfg::SymConfig)
         return QuantSymEx(cfg)
     end
 
-
     if inst.head == :call
         if inst.args[1] == :set_source_line
             cfg.source_line = inst.args[2]
-            println(">>> $(varid()) set_source_line($(cfg.source_line))")
+            if cfg.verbose
+                println(">>> $(varid()) set_source_line($(cfg.source_line))")
+            end
         elseif inst.args[1] in [:H, :S, :X, :Y, :Z, :CNOT, :Identity, :CZ] # Clifford gates
             if length(inst.args) == 2
                 # 1-q Clifford
@@ -101,8 +104,10 @@ function QuantSymEx(cfg::SymConfig)
                     eval(inst.args[1])(cfg.ρ, target_qubit)
                     counter = inject_symbolic_error(cfg.ρ, target_qubit, cfg.source_line)
                     cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
-                    println(adderrcnt())
-                    println(">>> $(varid()) $(inst.args[1]) target_qubit=$(target_qubit)")
+                    if cfg.verbose
+                        println(adderrcnt())
+                        println(">>> $(varid()) $(inst.args[1]) target_qubit=$(target_qubit)")
+                    end
                 end
             elseif length(inst.args) == 3
                 # CNOT, CZ
@@ -112,8 +117,10 @@ function QuantSymEx(cfg::SymConfig)
                     counter2 = inject_symbolic_error(cfg.ρ, target_qubit2, cfg.source_line)
                     counter = counter1 | counter2
                     cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
-                    println(adderrcnt())
-                    println(">>> $(varid()) $(inst.args[1]) target_qubit1=$(target_qubit1), target_qubit2=$(target_qubit2)")
+                    if cfg.verbose
+                        println(adderrcnt())
+                        println(">>> $(varid()) $(inst.args[1]) target_qubit1=$(target_qubit1), target_qubit2=$(target_qubit2)")
+                    end
                 end
             end
         elseif inst.args[1] in [:sX, :sY, :sZ] # Symbolic X, Y, Z gates
@@ -121,16 +128,20 @@ function QuantSymEx(cfg::SymConfig)
                 eval(inst.args[1])(cfg.ρ, target_qubit, control_sym)
                 counter = inject_symbolic_error(cfg.ρ, target_qubit, cfg.source_line)
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
-                println(adderrcnt())
-                println(">>> $(varid()) $(inst.args[1]) target_qubit=$(target_qubit), control_sym=$(control_sym)")
+                if cfg.verbose
+                    println(adderrcnt())
+                    println(">>> $(varid()) $(inst.args[1]) target_qubit=$(target_qubit), control_sym=$(control_sym)")
+                end
             end
         elseif inst.args[1] == :sPauli # Symbolic Pauli gate
             let target_qubit = CEval(cfg.σ, inst.args[2]), control_sym1=CEval(cfg.σ, inst.args[3]), control_sym2=CEval(cfg.σ, inst.args[4])
                 eval(inst.args[1])(cfg.ρ, target_qubit, control_sym1, control_sym2)
                 counter = inject_symbolic_error(cfg.ρ, target_qubit, cfg.source_line)
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
-                println(adderrcnt())
-                println(">>> $(varid()) $(inst)")
+                if cfg.verbose
+                    println(adderrcnt())
+                    println(">>> $(varid()) $(inst)")
+                end
             end
         elseif inst.args[1] == :M # Measurement Z basis
             let target_qubit = CEval(cfg.σ, inst.args[2]), sym_name=eval(CEval(cfg.σ, inst.args[3]))
@@ -139,8 +150,10 @@ function QuantSymEx(cfg::SymConfig)
                 counter2 = inject_symbolic_Xerror(cfg.ρ, target_qubit, cfg.source_line)
                 counter = counter1 | counter2
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
-                println(adderrcnt())
-                println(">>> $(varid()) $(inst)")
+                if cfg.verbose
+                    println(adderrcnt())
+                    println(">>> $(varid()) $(inst)")
+                end
             end
         elseif inst.args[1] == :MX # Measurement X basis
             let target_qubit = CEval(cfg.σ, inst.args[2]), sym_name=eval(CEval(cfg.σ, inst.args[3]))
@@ -149,8 +162,10 @@ function QuantSymEx(cfg::SymConfig)
                 counter2 = inject_symbolic_Zerror(cfg.ρ, target_qubit, cfg.source_line)
                 counter = counter1 | counter2
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
-                println(adderrcnt())
-                println(">>> $(varid()) $(inst) (target_qubit=$(target_qubit), sym_name=$(sym_name))")
+                if cfg.verbose
+                    println(adderrcnt())
+                    println(">>> $(varid()) $(inst) (target_qubit=$(target_qubit), sym_name=$(sym_name))")
+                end
             end
         elseif inst.args[1] == :DestructiveM # Destructive Measurement Z basis
             let target_qubit = CEval(cfg.σ, inst.args[2]), sym_name=eval(CEval(cfg.σ, inst.args[3]))
@@ -159,8 +174,10 @@ function QuantSymEx(cfg::SymConfig)
                 #counter2 = inject_symbolic_Xerror(cfg.ρ, target_qubit)
                 counter = counter1 #| counter2
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
-                println(adderrcnt())
-                println(">>> $(varid()) $(inst.args[1]) target_qubit=$(target_qubit), sym_name=$(sym_name)")
+                if cfg.verbose
+                    println(adderrcnt())
+                    println(">>> $(varid()) $(inst.args[1]) target_qubit=$(target_qubit), sym_name=$(sym_name)")
+                end
             end
         elseif inst.args[1] == :DestructiveMX # Destructive Measurement X basis
             let target_qubit = CEval(cfg.σ, inst.args[2]), sym_name=eval(CEval(cfg.σ, inst.args[3]))
@@ -169,24 +186,30 @@ function QuantSymEx(cfg::SymConfig)
                 #counter2 = inject_symbolic_Zerror(cfg.ρ, target_qubit)
                 counter = counter1 #| counter2
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
-                println(adderrcnt())
-                println(">>> $(varid()) $(inst)")
+                if cfg.verbose
+                    println(adderrcnt())
+                    println(">>> $(varid()) $(inst)")
+                end
             end
         elseif inst.args[1] == :INIT # INIT |0>
             let target_qubit = CEval(cfg.σ, inst.args[2])
                 eval(inst.args[1])(cfg.ρ, target_qubit, "INIT")
                 counter = inject_symbolic_Xerror(cfg.ρ, target_qubit, cfg.source_line)
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
-                println(adderrcnt())
-                println(">>> $(varid()) $(inst.args[1]) target_qubit=$(target_qubit)")
+                if cfg.verbose
+                    println(adderrcnt())
+                    println(">>> $(varid()) $(inst.args[1]) target_qubit=$(target_qubit)")
+                end
             end
         elseif inst.args[1] == :INITP # INIT |+>
             let target_qubit = CEval(cfg.σ, inst.args[2])
                 eval(inst.args[1])(cfg.ρ, target_qubit, "INITP")
                 counter = inject_symbolic_Zerror(cfg.ρ, target_qubit, cfg.source_line)
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
-                println(adderrcnt())
-                println(">>> $(varid()) $(inst)")
+                if cfg.verbose
+                    println(adderrcnt())
+                    println(">>> $(varid()) $(inst)")
+                end
             end
         elseif inst.args[1] == :INIT2CNOT12 # INIT |0> on qubit 2, CNOT on qubits 1, 2
             let target_qubit1 = CEval(cfg.σ, inst.args[2]), target_qubit2 = CEval(cfg.σ, inst.args[3])
@@ -195,8 +218,10 @@ function QuantSymEx(cfg::SymConfig)
                 counter2 = inject_symbolic_Xerror(cfg.ρ, target_qubit2, cfg.source_line)
                 counter = counter1 | counter2
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
-                println(adderrcnt())
-                println(">>> $(varid()) $(inst)")
+                if cfg.verbose
+                    println(adderrcnt())
+                    println(">>> $(varid()) $(inst)")
+                end
             end
         elseif inst.args[1] == :CNOT12DestructiveM2 #CNOT on qubits 1, 2, DestructiveM on qubit 2
             let target_qubit1 = CEval(cfg.σ, inst.args[2]), target_qubit2 = CEval(cfg.σ, inst.args[3]), sym_name=eval(CEval(cfg.σ, inst.args[4]))
@@ -205,8 +230,10 @@ function QuantSymEx(cfg::SymConfig)
                 cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubit1, target_qubit2, sym_name)
                 counter = counter1 | counter2
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
-                println(adderrcnt())
-                println(">>> $(varid()) $(inst)")
+                if cfg.verbose
+                    println(adderrcnt())
+                    println(">>> $(varid()) $(inst)")
+                end
             end
         elseif inst.args[1] == :CNOT12DestructiveMX1 #CNOT on qubits 1, 2, DestructiveMX on qubit 1
             let target_qubit1 = CEval(cfg.σ, inst.args[2]), target_qubit2 = CEval(cfg.σ, inst.args[3]), sym_name=eval(CEval(cfg.σ, inst.args[4]))
@@ -215,8 +242,10 @@ function QuantSymEx(cfg::SymConfig)
                 cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubit1, target_qubit2, sym_name)
                 counter = counter1 | counter2
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
-                println(adderrcnt())
-                println(">>> $(varid()) $(inst)")
+                if cfg.verbose
+                    println(adderrcnt())
+                    println(">>> $(varid()) $(inst)")
+                end
             end
         elseif inst.args[1] == :CZ12DestructiveMX1 #CZ on qubits 1, 2, DestructiveMX on qubit 1
             let target_qubit1 = CEval(cfg.σ, inst.args[2]), target_qubit2 = CEval(cfg.σ, inst.args[3]), sym_name=eval(CEval(cfg.σ, inst.args[4]))
@@ -225,8 +254,10 @@ function QuantSymEx(cfg::SymConfig)
                 cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubit1, target_qubit2, sym_name)
                 counter = counter1 | counter2
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
-                println(adderrcnt())
-                println(">>> $(varid()) $(inst)")
+                if cfg.verbose
+                    println(adderrcnt())
+                    println(">>> $(varid()) $(inst)")
+                end
             end
         elseif inst.args[1] == :CatPreparationMod # Cat Preparation Module
             let target_qubits = CEval(cfg.σ, inst.args[2])
@@ -237,13 +268,17 @@ function QuantSymEx(cfg::SymConfig)
                 for jj in 1:length(target_qubits)
                     tmp_counter = inject_symbolic_Xerror(cfg.ρ, target_qubits[jj], cfg.source_line)
                     counter2 += zeroext(cfg.ctx, tmp_counter, b_num_target_qubits)
-                    println(adderrcnt())
+                    if cfg.verbose
+                        println(adderrcnt())
+                    end
                 end
                 counter = alloc_symb(cfg.ctx, "cat_error", len = b_num_target_qubits)
                 phi = (not(counter1 <= counter2) | (counter == counter2)) & ((counter1 <= counter2) | (counter == counter1))
                 cfg.nerrs += addzeros(cfg.ctx, counter, NERRS-b_num_target_qubits)
                 cfg.ϕ = (cfg.ϕ[1] & phi, cfg.ϕ[2], cfg.ϕ[3])
-                println(">>> $(varid()) $(inst)")
+                if cfg.verbose
+                    println(">>> $(varid()) $(inst)")
+                end
             end
          elseif inst.args[1] == :MultiPauliMeasurement #Multi-qubits Pauli Measurement
             let target_qubits = CEval(cfg.σ, inst.args[2]), Paulis = CEval(cfg.σ, inst.args[3]), sym_name=eval(CEval(cfg.σ, inst.args[4]))
@@ -256,13 +291,17 @@ function QuantSymEx(cfg::SymConfig)
                 for jj in 1:length(target_qubits)
                     tmp_counter = inject_symbolic_error(cfg.ρ, target_qubits[jj], cfg.source_line)
                     counter2 += zeroext(cfg.ctx, tmp_counter, b_num_target_qubits)
-                    println(adderrcnt())
+                    if cfg.verbose
+                        println(adderrcnt())
+                    end
                 end
                 counter = alloc_symb(cfg.ctx, "MultiPauliMeasurement_error", len = b_num_target_qubits)
                 phi = (not(counter1 <= counter2) | (counter == counter2)) & ((counter1 <= counter2) | (counter == counter1))
                 cfg.nerrs += addzeros(cfg.ctx, counter, NERRS-b_num_target_qubits)
                 cfg.ϕ = (cfg.ϕ[1] & phi, cfg.ϕ[2], cfg.ϕ[3])
-                println(">>> $(varid()) $(inst)")
+                if cfg.verbose
+                    println(">>> $(varid()) $(inst)")
+                end
              end
 
             # if haskey(cfg.σ, :__init_list__)
@@ -351,15 +390,15 @@ function QuantSymEx(cfg::SymConfig)
         #println(">>> $(varid()) $(inst) with path condition $(ϕ)")
         if ϕ isa Bool
             if ϕ
-                cfg1 = SymConfig(S1, cfg.σ, cfg.ρ, cfg.P, cfg.ϕ, cfg.ctx, cfg.NERRS, cfg.nerrs, cfg.source_line)
+                cfg1 = SymConfig(S1, cfg.σ, cfg.ρ, cfg.P, cfg.ϕ, cfg.ctx, cfg.NERRS, cfg.nerrs, cfg.source_line, cfg.verbose)
                 return QuantSymEx(cfg1)
             else
-                cfg2 = SymConfig(S2, cfg.σ, cfg.ρ, cfg.P, cfg.ϕ, cfg.ctx, cfg.NERRS, cfg.nerrs, cfg.source_line)
+                cfg2 = SymConfig(S2, cfg.σ, cfg.ρ, cfg.P, cfg.ϕ, cfg.ctx, cfg.NERRS, cfg.nerrs, cfg.source_line, cfg.verbose)
                 return QuantSymEx(cfg2)
             end
         end
-        cfg1 = SymConfig(S1, cfg.σ, cfg.ρ, cfg.P, (cfg.ϕ[1] & ϕ, cfg.ϕ[2], cfg.ϕ[3]), cfg.ctx, cfg.NERRS, cfg.nerrs, cfg.source_line)
-        cfg2 = SymConfig(S2, cfg.σ, cfg.ρ, cfg.P, (cfg.ϕ[1] & not(ϕ), cfg.ϕ[2], cfg.ϕ[3]), cfg.ctx, cfg.NERRS, cfg.nerrs, cfg.source_line)
+        cfg1 = SymConfig(S1, cfg.σ, cfg.ρ, cfg.P, (cfg.ϕ[1] & ϕ, cfg.ϕ[2], cfg.ϕ[3]), cfg.ctx, cfg.NERRS, cfg.nerrs, cfg.source_line, cfg.verbose)
+        cfg2 = SymConfig(S2, cfg.σ, cfg.ρ, cfg.P, (cfg.ϕ[1] & not(ϕ), cfg.ϕ[2], cfg.ϕ[3]), cfg.ctx, cfg.NERRS, cfg.nerrs, cfg.source_line, cfg.verbose)
         return vcat(QuantSymEx(cfg1)..., QuantSymEx(cfg2)...)
     elseif inst.head == :for
         inst.args[2] = postwalk(
@@ -399,7 +438,7 @@ function QuantSymEx(cfg::SymConfig)
             ϕ = CEval(c.σ, inst.args[1])
             # println("path condition is $(ϕ)")
             c.S.args = rest_S
-            return SymConfig(c.S, c.σ, c.ρ, c.P, (c.ϕ[1] & ϕ, c.ϕ[2], c.ϕ[3]), c.ctx, c.NERRS, c.nerrs, c.source_line)
+            return SymConfig(c.S, c.σ, c.ρ, c.P, (c.ϕ[1] & ϕ, c.ϕ[2], c.ϕ[3]), c.ctx, c.NERRS, c.nerrs, c.source_line, c.verbose)
             # return c
         end
         final = map(execute_config, newcfgs)

@@ -997,7 +997,7 @@ function smt_solve_z3(slv::Solver)
     #@info "z3 has solved the problem"
 
     if res == Z3.sat
-        @info "z3 solved the problem as SAT"
+        #@info "z3 solved the problem as SAT"
         open("query.smt2", "w") do io
             println(io, to_smt2(slv, "sat"))
         end
@@ -1015,7 +1015,7 @@ end
 
 """return `true` if SAT"""
 function smt_solve_external(slv::Solver, command::Cmd, postfix::String)
-    @info "'$(command)' is used as smt solver for $(postfix) case"
+    #@info "'$(command)' is used as smt solver for $(postfix) case"
 
     smt2_file_name = "_temp_check_$(postfix)_"
 
@@ -1048,14 +1048,14 @@ function smt_solve_external(slv::Solver, command::Cmd, postfix::String)
     res_string = read(pipeline(`$(command) $(smt2_file_name*".smt2")`), String)
 
 
-    @info "'$(command)' has solved the problem"
+    #@info "'$(command)' has solved the problem"
 
     # should be SAT, since UNSAT is not occurred
     if ~occursin("unsat", res_string)
         open(smt2_file_name * ".output", "w") do io
             println(io, res_string)
         end
-        @info "The assignment that generates the bug has been written to ./$(smt2_file_name).output"
+        #@info "The assignment that generates the bug has been written to ./$(smt2_file_name).output"
         return true, res_string
     end
 
@@ -1210,10 +1210,10 @@ function check_FT(q1::SymStabilizerState, q2::SymStabilizerState, assumptions::T
     end
 
     if is_sat
-        println(">>> Fail!")
+        #println(">>> Fail!")
         return false, res_str
     else
-        println(">>> Pass!")
+        #println(">>> Pass!")
     end
 
     return true, res_str
