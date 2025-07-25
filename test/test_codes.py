@@ -1,8 +1,8 @@
 import pytest
-from ucc_ft.surface_code import RotatedSurfaceCode
+from ucc_ft.codes import RotatedSurfaceCode
 
 
-def test_z_stabilizer():
+def test_sc_z_stabilizer():
     # Test for d=3
     sc = RotatedSurfaceCode(3)
     assert sc.z_stabilizer_idx(0) == [0, 1]
@@ -13,7 +13,7 @@ def test_z_stabilizer():
         sc.z_stabilizer_idx(5)
 
 
-def test_rotate():
+def test_sc_rotate():
     # Test for d=3
     orig = [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
     rotated = [[6, 3, 0], [7, 4, 1], [8, 5, 2]]
@@ -23,7 +23,7 @@ def test_rotate():
             assert sc.rotate_idx(orig[i][j]) == rotated[i][j]
 
 
-def test_x_stabilizer():
+def test_sc_x_stabilizer():
     # Test for d=3
     sc = RotatedSurfaceCode(3)
     assert sorted(sc.x_stabilizer_idx(0)) == [3, 6]
@@ -34,17 +34,17 @@ def test_x_stabilizer():
         sc.x_stabilizer_idx(5)
 
 
-def test_logical_x_idx():
+def test_sc_logical_x_idx():
     # Test for d=3
     assert RotatedSurfaceCode(3).logical_x_idx() == [3, 4, 5]
     assert RotatedSurfaceCode(5).logical_x_idx() == [10, 11, 12, 13, 14]
 
 
-def test_logical_z_idx():
+def test_sc_logical_z_idx():
     assert sorted(RotatedSurfaceCode(3).logical_z_idx()) == [1, 4, 7]
 
 
-def test_physical_z_idx():
+def test_sc_physical_z_idx():
     # Test for d=3
     sc = RotatedSurfaceCode(3)
     assert sorted(sc.physical_z_idx()) == [0, 1, 2, 3, 4, 5, 6, 7, 8]

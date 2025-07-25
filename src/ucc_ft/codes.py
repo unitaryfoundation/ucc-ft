@@ -111,3 +111,28 @@ class RotatedSurfaceCode:
     def physical_z_stabilizers(self) -> List[PauliString]:
         """Return the physical Z operator for the rotated surface code of distance d."""
         return [PauliString(f"Z{j}") for j in self.physical_z_idx()]
+
+
+class CatStateCode:
+    """
+    Although not an error-correcting code, there are a set of stabilizers and
+    logical operators that are stabilized by the cat state. We can use this to
+    verify the fault tolerance of the cat state preparation circuit.
+    """
+
+    def __init__(self, num_qubits: int, max_faults: int):
+        self.num_qubits = num_qubits
+        self.d = max_faults * 2 + 1
+
+    def stabilizers(self):
+        return [
+            PauliString(f"Z{i}*Z{j}")
+            for (i, j) in zip(range(self.num_qubits), range(1, self.num_qubits))
+        ]
+
+    def logical_prep_stabilizer(self):
+        """The prepared state is |+>_L, the +1 eigenstate of the logical X operator."""
+        return PauliString("X" * self.num_qubits)
+
+    def physical_z_stabilizers(self):
+        return [PauliString(f"Z{i}") for i in range(self.num_qubits)]

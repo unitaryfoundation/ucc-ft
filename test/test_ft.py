@@ -10,7 +10,7 @@ from ucc_ft.checker import (
     qasm_to_qprog,
     qasm_to_qprog_source,
 )
-from ucc_ft.surface_code import RotatedSurfaceCode
+from ucc_ft.codes import RotatedSurfaceCode, CatStateCode
 
 
 def test_to_julia_tableau_fmt():
@@ -35,26 +35,6 @@ def test_to_julia_tableau_fmt():
         dtype=bool,
     )
     assert np.array_equal(res, expected)
-
-
-# class for "Cat State" code
-class CatStateCode:
-    def __init__(self, num_qubits: int, max_faults: int):
-        self.num_qubits = num_qubits
-        self.d = max_faults * 2 + 1
-
-    def stabilizers(self):
-        return [
-            PauliString(f"Z{i}*Z{j}")
-            for (i, j) in zip(range(self.num_qubits), range(1, self.num_qubits))
-        ]
-
-    def logical_prep_stabilizer(self):
-        """The prepared state is |+>_L, the +1 eigenstate of the logical X operator."""
-        return PauliString("X" * self.num_qubits)
-
-    def physical_z_stabilizers(self):
-        return [PauliString(f"Z{i}") for i in range(self.num_qubits)]
 
 
 @pytest.mark.parametrize(
