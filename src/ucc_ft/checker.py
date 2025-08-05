@@ -47,6 +47,12 @@ class QProgVisitor(Printer):
         for statement in node.statements:
             self.visit(statement, context)
 
+    def _inject_source_line(self, line: int, context: PrinterState) -> None:
+        # Inject a comment with the source line number for error reporting
+        self._start_line(context)
+        self.stream.write(f"set_source_line({line})")
+        self._end_statement(context)
+
     def _visit_statement_list(
         self,
         nodes: List[ast.Statement],
@@ -103,6 +109,7 @@ class QProgVisitor(Printer):
     def visit_ClassicalDeclaration(
         self, node: ast.ClassicalDeclaration, context: PrinterState
     ) -> None:
+        self._inject_source_line(node.span.start_line, context)
         self._start_line(context)
         self.visit(node.identifier, context)
         # No type for Julia
@@ -230,6 +237,7 @@ class QProgVisitor(Printer):
         self.stream.write(")")
 
     def visit_QuantumReset(self, node: ast.QuantumReset, context: PrinterState) -> None:
+        self._inject_source_line(node.span.start_line, context)
         self._start_line(context)
         self.stream.write("INIT(")
         self.visit(node.qubits, context)
@@ -237,6 +245,7 @@ class QProgVisitor(Printer):
         self._end_statement(context)
 
     def visit_QuantumGate(self, node: ast.QuantumGate, context: PrinterState) -> None:
+        self._inject_source_line(node.span.start_line, context)
         self._start_line(context)
         self._visit_gate_identifier(node.name, context)
         if node.arguments:
@@ -300,6 +309,8 @@ class QProgVisitor(Printer):
         # e.g. if( syndrome_X) X(qubit) to sX(qubit, syndrome_X)
         # This is a more efficient way for FT checker code in julia to handle the
         # measurement
+
+        self._inject_source_line(node.if_block[0].span.start_line, context)
         self._start_line(context)
         gate = node.if_block[0].name.name
         rewrite = {"x": "sX", "y": "sY", "z": "sZ"}
@@ -349,6 +360,10 @@ class QProgVisitor(Printer):
         else:
             self.stream.write("end")
             self._end_line(context)
+
+    def visit_QuantumMeasurementStatement(self, node, context):
+        self._inject_source_line(node.span.start_line, context)
+        return super().visit_QuantumMeasurementStatement(node, context)
 
     def visit_QuantumMeasurement(
         self, node: ast.QuantumMeasurement, context: PrinterState
