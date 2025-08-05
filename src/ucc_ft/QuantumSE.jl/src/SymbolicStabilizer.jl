@@ -913,9 +913,10 @@ function reset_varid()
     __allocvarid = 0
 end
 
-function inject_symbolic_error(q::SymStabilizerState, target_qubit::Int)
-    xerr_symb = alloc_symb(q.ctx, "symb_Xerror_Q$(target_qubit)")
-    zerr_symb = alloc_symb(q.ctx, "symb_Zerror_Q$(target_qubit)")
+function inject_symbolic_error(q::SymStabilizerState, target_qubit::Int, source_line::Int = -1)
+    line_suffix = source_line >= 0 ? "_L$(source_line)" : ""
+    xerr_symb = alloc_symb(q.ctx, "symb_Xerror_Q$(target_qubit)$(line_suffix)")
+    zerr_symb = alloc_symb(q.ctx, "symb_Zerror_Q$(target_qubit)$(line_suffix)")
 
     #sX!(q, target_qubit, xerr_symb & ~zerr_symb)
     #sY!(q, target_qubit, xerr_symb & zerr_symb)
@@ -926,8 +927,9 @@ function inject_symbolic_error(q::SymStabilizerState, target_qubit::Int)
     return xerr_symb | zerr_symb
 end
 
-function inject_symbolic_Xerror(q::SymStabilizerState, target_qubit::Int)
-    xerr_symb = alloc_symb(q.ctx, "symb_Xerror_Q$(target_qubit)")
+function inject_symbolic_Xerror(q::SymStabilizerState, target_qubit::Int, source_line::Int = -1)
+    line_suffix = source_line >= 0 ? "_L$(source_line)" : ""
+    xerr_symb = alloc_symb(q.ctx, "symb_Xerror_Q$(target_qubit)$(line_suffix)")
     #zerr_symb = alloc_symb(q, "symb_Zerror")
 
     #sX!(q, target_qubit, xerr_symb & ~zerr_symb)
@@ -939,9 +941,10 @@ function inject_symbolic_Xerror(q::SymStabilizerState, target_qubit::Int)
     return xerr_symb
 end
 
-function inject_symbolic_Zerror(q::SymStabilizerState, target_qubit::Int)
+function inject_symbolic_Zerror(q::SymStabilizerState, target_qubit::Int, source_line::Int = -1)
+    line_suffix = source_line >= 0 ? "_L$(source_line)" : ""
     #xerr_symb = alloc_symb(q, "symb_Xerror")
-    zerr_symb = alloc_symb(q.ctx, "symb_Zerror_Q$(target_qubit)")
+    zerr_symb = alloc_symb(q.ctx, "symb_Zerror_Q$(target_qubit)$(line_suffix)")
 
     #sX!(q, target_qubit, xerr_symb & ~zerr_symb)
     #sY!(q, target_qubit, xerr_symb & zerr_symb)
@@ -954,9 +957,10 @@ end
 
 
 
-function inject_symbolic_error_SymPauli(q::SymStabilizerState, target_qubit::Int, control_sym::Z3.Expr)
-    xerr_symb = alloc_symb(q.ctx, "symb_Xerror_Q$(target_qubit)")
-    zerr_symb = alloc_symb(q.ctx, "symb_Zerror_Q$(target_qubit)")
+function inject_symbolic_error_SymPauli(q::SymStabilizerState, target_qubit::Int, control_sym::Z3.Expr, source_line::Int = -1)
+    line_suffix = source_line >= 0 ? "_L$(source_line)" : ""
+    xerr_symb = alloc_symb(q.ctx, "symb_Xerror_Q$(target_qubit)$(line_suffix)")
+    zerr_symb = alloc_symb(q.ctx, "symb_Zerror_Q$(target_qubit)$(line_suffix)")
 
     #sX!(q, target_qubit, xerr_symb & ~zerr_symb)
     #sY!(q, target_qubit, xerr_symb & zerr_symb)
