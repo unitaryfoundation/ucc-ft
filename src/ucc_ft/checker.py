@@ -7,7 +7,8 @@ import openqasm3
 import openqasm3.ast as ast
 from openqasm3.printer import Printer, PrinterState
 from openqasm3 import properties
-from typing import List, Sequence, Any
+from typing import List, Sequence, Any, Optional
+import re
 import io
 from dataclasses import dataclass
 
@@ -703,20 +704,80 @@ def error_free_symbolic_output(
     pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class FTErrorLocation:
-    source_line: int
-    qubit_index: int
+    """
+    Represents a specific fault-tolerant error event.
+    """
+
     error_type: str
+    qubit_index: int
+    source_line: Optional[int]
+
+    def __str__(self):
+        """
+        Creates a user-friendly string representation for printing.
+        """
+        # Format the location part of the string
+        if self.source_line is not None:
+            location_str = f"[Line {self.source_line: >3}]"  # Right-align line number for clean output
+        else:
+            location_str = "[Init]"
+
+        return f"{location_str: <6} {self.error_type}-Pauli error on Qubit {self.qubit_index}"
 
 
 class FTCheckResult:
-    def __init__(self, is_ft: bool, error_cause: FTErrorLocation = None):
+    def __init__(self, is_ft: bool, error_cause: List[FTErrorLocation] = None):
         self.is_ft = is_ft
         self.error_cause = error_cause
 
     def __bool__(self):
         return self.is_ft
+
+    def __str__(self):
+        if self.is_ft:
+            return "Circuit is fault-tolerant"
+
+        return (
+            "Circuit is not fault-tolerant. Fault-tolerant error locations:\n"
+            + "\n".join(str(e) for e in self.error_cause)
+        )
+
+
+def parse_smt_errors(output: str) -> list[FTErrorLocation]:
+    """
+    Parses the SMT model output to find all asserted errors.
+    """
+    error_locations = []
+
+    # Regex to find all `define-fun` lines that result in `#b1`
+    error_name_pattern = re.compile(r"\(define-fun\s+([^\s]+)\s+.*\s+#b1\)")
+
+    # Regex to parse the components of an error name.
+    # It handles both cases: with and without the optional `_L<number>` part.
+    # - Group 1: ([XZ]) -> The error type 'X' or 'Z'
+    # - Group 2: (\d+) -> The qubit index
+    # - Group 3: (?:_L(\d+))? -> An optional non-capturing group for the line number.
+    #   The inner (\d+) is the part we actually capture. It will be None if not present.
+    name_parser_pattern = re.compile(r"symb_([XZ])error_Q(\d+)(?:_L(\d+))?_.*")
+
+    error_names = error_name_pattern.findall(output)
+
+    for name in error_names:
+        match = name_parser_pattern.match(name)
+        if match:
+            error_type, qubit_str, line_str = match.groups()
+
+            error_obj = FTErrorLocation(
+                error_type=error_type,
+                # Convert to 0-based index to match QASM
+                qubit_index=int(qubit_str) - 1,
+                source_line=int(line_str) if line_str is not None else None,
+            )
+            error_locations.append(error_obj)
+
+    return error_locations
 
 
 def ft_check(
@@ -809,7 +870,7 @@ def ft_check_ideal(
                 jl.bv_const(ctx, "lz", 1) if gadget_type == "measurement" else None
             )
 
-            if not jl.check_FT_py(
+            res, res_str = jl.check_FT_py(
                 cfg,
                 symbolic_target_state,
                 num_errors,
@@ -818,13 +879,9 @@ def ft_check_ideal(
                 num_blocks=num_blocks,
                 meas_result=meas_result,
                 meas_gt=meas_gt,
-            ):
+            )
+            if not res:
                 # Extract the error information and relate back to the line in the code
-                # err_location = FTErrorLocation(
-                #     source_line=,
-                #     qubit_index=cfg.qubit_index,
-                #     error_type=cfg.error_type,
-                # )
-                # return FTCheckResult(False, err_location)
-                return FTCheckResult(False)
+                err_locations = parse_smt_errors(res_str)
+                return FTCheckResult(False, err_locations)
     return FTCheckResult(True)

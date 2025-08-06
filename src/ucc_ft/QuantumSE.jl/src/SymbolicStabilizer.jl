@@ -1006,10 +1006,10 @@ function smt_solve_z3(slv::Solver)
             println(io, get_model(slv))
         end
 
-        return true
+        return true, ""
     else
         @info "z3 failed to solve the problem as SAT"
-        return false
+        return false, ""
     end
 end
 
@@ -1056,10 +1056,10 @@ function smt_solve_external(slv::Solver, command::Cmd, postfix::String)
             println(io, res_string)
         end
         @info "The assignment that generates the bug has been written to ./$(smt2_file_name).output"
-        return true
+        return true, res_string
     end
 
-    return false
+    return false, res_string
 end
 
 function check_FT(q1::SymStabilizerState, q2::SymStabilizerState, assumptions::Tuple{Z3.Expr, Z3.Expr, Z3.Expr}, nerrs::Z3.Expr, NERRS::Integer, num_errors::Int64, nerrs_input::Z3.Expr, FT_type::String, slv_backend_cmd::Cmd=`bitwuzla -rwl 0`; meas_result=0, meas_gt=0, num_blocks=1, use_z3=false, non_FT=false)
@@ -1203,7 +1203,7 @@ function check_FT(q1::SymStabilizerState, q2::SymStabilizerState, assumptions::T
 
     add(slv, conjecture)
 
-    is_sat = if use_z3
+    is_sat, res_str = if use_z3
         smt_solve_z3(slv)
     else
         smt_solve_external(slv, slv_backend_cmd, "FT_condition")
@@ -1211,10 +1211,10 @@ function check_FT(q1::SymStabilizerState, q2::SymStabilizerState, assumptions::T
 
     if is_sat
         println(">>> Fail!")
-        return false
+        return false, res_str
     else
         println(">>> Pass!")
     end
 
-    return true
+    return true, res_str
 end
