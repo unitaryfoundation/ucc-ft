@@ -713,6 +713,8 @@ class FTErrorLocation:
     error_type: str
     qubit_index: int
     source_line: Optional[int]
+    operation_name: Optional[str] = None
+    operation_qubits: Optional[List[int]] = None  # All qubits involved in the operation
 
     def __str__(self):
         """
@@ -724,7 +726,17 @@ class FTErrorLocation:
         else:
             location_str = "[Init]"
 
-        return f"{location_str: <6} {self.error_type}-Pauli error on Qubit {self.qubit_index}"
+        # Format the operation part of the string
+        if self.operation_name is not None:
+            if self.operation_qubits is not None and len(self.operation_qubits) > 0:
+                op_qubits_str = ",".join([f"qubit {i}" for i in self.operation_qubits])
+                op_str = f" after {self.operation_name}({op_qubits_str})"
+            else:
+                op_str = f" after {self.operation_name}"
+        else:
+            op_str = ""
+
+        return f"{location_str: <6} {self.error_type}-Pauli error on qubit {self.qubit_index}{op_str}"
 
 
 class FTCheckResult:
@@ -755,25 +767,40 @@ def parse_smt_errors(output: str) -> list[FTErrorLocation]:
     error_name_pattern = re.compile(r"\(define-fun\s+([^\s]+)\s+.*\s+#b1\)")
 
     # Regex to parse the components of an error name.
-    # It handles both cases: with and without the optional `_L<number>` part.
+    # It handles both cases: with and without the optional `_L<number>` and `_OP<operation>_QS<qubits>` parts.
     # - Group 1: ([XZ]) -> The error type 'X' or 'Z'
     # - Group 2: (\d+) -> The qubit index
     # - Group 3: (?:_L(\d+))? -> An optional non-capturing group for the line number.
-    #   The inner (\d+) is the part we actually capture. It will be None if not present.
-    name_parser_pattern = re.compile(r"symb_([XZ])error_Q(\d+)(?:_L(\d+))?_.*")
+    # - Group 4: (?:_OP([^_]+))? -> An optional non-capturing group for the operation name.
+    # - Group 5: (?:_QS([\d_]+))? -> An optional non-capturing group for the operation qubits.
+    name_parser_pattern = re.compile(
+        r"symb_([XZ])error_Q(\d+)(?:_L(\d+))?(?:_OP([^_]+)_QS([\d_]+))?_.*"
+    )
 
     error_names = error_name_pattern.findall(output)
 
     for name in error_names:
         match = name_parser_pattern.match(name)
         if match:
-            error_type, qubit_str, line_str = match.groups()
+            error_type, qubit_str, line_str, operation_name, operation_qubits_str = (
+                match.groups()
+            )
+
+            # Parse operation qubits if present
+            operation_qubits = None
+            if operation_qubits_str is not None:
+                # Convert underscore-separated qubit indices to list of 0-based indices
+                operation_qubits = [
+                    int(q) - 1 for q in operation_qubits_str.split("_") if q
+                ]
 
             error_obj = FTErrorLocation(
                 error_type=error_type,
                 # Convert to 0-based index to match QASM
                 qubit_index=int(qubit_str) - 1,
                 source_line=int(line_str) if line_str is not None else None,
+                operation_name=operation_name,
+                operation_qubits=operation_qubits,
             )
             error_locations.append(error_obj)
 
