@@ -102,7 +102,7 @@ function QuantSymEx(cfg::SymConfig)
                 # 1-q Clifford
                 let target_qubit = CEval(cfg.σ, inst.args[2])
                     eval(inst.args[1])(cfg.ρ, target_qubit)
-                    counter = inject_symbolic_error(cfg.ρ, target_qubit, cfg.source_line)
+                    counter = inject_symbolic_error(cfg.ρ, target_qubit, cfg.source_line, string(inst.args[1]), [target_qubit])
                     cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
                     if cfg.verbose
                         println(adderrcnt())
@@ -113,8 +113,8 @@ function QuantSymEx(cfg::SymConfig)
                 # CNOT, CZ
                 let target_qubit1 = CEval(cfg.σ, inst.args[2]), target_qubit2 = CEval(cfg.σ, inst.args[3])
                     eval(inst.args[1])(cfg.ρ, target_qubit1, target_qubit2)
-                    counter1 = inject_symbolic_error(cfg.ρ, target_qubit1, cfg.source_line)
-                    counter2 = inject_symbolic_error(cfg.ρ, target_qubit2, cfg.source_line)
+                    counter1 = inject_symbolic_error(cfg.ρ, target_qubit1, cfg.source_line, string(inst.args[1]), [target_qubit1, target_qubit2])
+                    counter2 = inject_symbolic_error(cfg.ρ, target_qubit2, cfg.source_line, string(inst.args[1]), [target_qubit1, target_qubit2])
                     counter = counter1 | counter2
                     cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
                     if cfg.verbose
@@ -126,7 +126,7 @@ function QuantSymEx(cfg::SymConfig)
         elseif inst.args[1] in [:sX, :sY, :sZ] # Symbolic X, Y, Z gates
             let target_qubit = CEval(cfg.σ, inst.args[2]), control_sym=CEval(cfg.σ, inst.args[3])
                 eval(inst.args[1])(cfg.ρ, target_qubit, control_sym)
-                counter = inject_symbolic_error(cfg.ρ, target_qubit, cfg.source_line)
+                counter = inject_symbolic_error(cfg.ρ, target_qubit, cfg.source_line, string(inst.args[1]), [target_qubit])
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
                 if cfg.verbose
                     println(adderrcnt())
@@ -136,7 +136,7 @@ function QuantSymEx(cfg::SymConfig)
         elseif inst.args[1] == :sPauli # Symbolic Pauli gate
             let target_qubit = CEval(cfg.σ, inst.args[2]), control_sym1=CEval(cfg.σ, inst.args[3]), control_sym2=CEval(cfg.σ, inst.args[4])
                 eval(inst.args[1])(cfg.ρ, target_qubit, control_sym1, control_sym2)
-                counter = inject_symbolic_error(cfg.ρ, target_qubit, cfg.source_line)
+                counter = inject_symbolic_error(cfg.ρ, target_qubit, cfg.source_line, "sPauli", [target_qubit])
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
                 if cfg.verbose
                     println(adderrcnt())
@@ -145,9 +145,9 @@ function QuantSymEx(cfg::SymConfig)
             end
         elseif inst.args[1] == :M # Measurement Z basis
             let target_qubit = CEval(cfg.σ, inst.args[2]), sym_name=eval(CEval(cfg.σ, inst.args[3]))
-                counter1 = inject_symbolic_Xerror(cfg.ρ, target_qubit, cfg.source_line)
+                counter1 = inject_symbolic_Xerror(cfg.ρ, target_qubit, cfg.source_line, "M", [target_qubit])
                 cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubit, sym_name)
-                counter2 = inject_symbolic_Xerror(cfg.ρ, target_qubit, cfg.source_line)
+                counter2 = inject_symbolic_Xerror(cfg.ρ, target_qubit, cfg.source_line, "M", [target_qubit])
                 counter = counter1 | counter2
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
                 if cfg.verbose
@@ -157,9 +157,9 @@ function QuantSymEx(cfg::SymConfig)
             end
         elseif inst.args[1] == :MX # Measurement X basis
             let target_qubit = CEval(cfg.σ, inst.args[2]), sym_name=eval(CEval(cfg.σ, inst.args[3]))
-                counter1 = inject_symbolic_Zerror(cfg.ρ, target_qubit, cfg.source_line)
+                counter1 = inject_symbolic_Zerror(cfg.ρ, target_qubit, cfg.source_line, "MX", [target_qubit])
                 cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubit, sym_name)
-                counter2 = inject_symbolic_Zerror(cfg.ρ, target_qubit, cfg.source_line)
+                counter2 = inject_symbolic_Zerror(cfg.ρ, target_qubit, cfg.source_line, "MX", [target_qubit])
                 counter = counter1 | counter2
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
                 if cfg.verbose
@@ -169,7 +169,7 @@ function QuantSymEx(cfg::SymConfig)
             end
         elseif inst.args[1] == :DestructiveM # Destructive Measurement Z basis
             let target_qubit = CEval(cfg.σ, inst.args[2]), sym_name=eval(CEval(cfg.σ, inst.args[3]))
-                counter1 = inject_symbolic_Xerror(cfg.ρ, target_qubit, cfg.source_line)
+                counter1 = inject_symbolic_Xerror(cfg.ρ, target_qubit, cfg.source_line, "DestructiveM", [target_qubit])
                 cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubit, sym_name)
                 #counter2 = inject_symbolic_Xerror(cfg.ρ, target_qubit)
                 counter = counter1 #| counter2
@@ -181,7 +181,7 @@ function QuantSymEx(cfg::SymConfig)
             end
         elseif inst.args[1] == :DestructiveMX # Destructive Measurement X basis
             let target_qubit = CEval(cfg.σ, inst.args[2]), sym_name=eval(CEval(cfg.σ, inst.args[3]))
-                counter1 = inject_symbolic_Zerror(cfg.ρ, target_qubit, cfg.source_line)
+                counter1 = inject_symbolic_Zerror(cfg.ρ, target_qubit, cfg.source_line, "DestructiveMX", [target_qubit])
                 cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubit, sym_name)
                 #counter2 = inject_symbolic_Zerror(cfg.ρ, target_qubit)
                 counter = counter1 #| counter2
@@ -194,7 +194,7 @@ function QuantSymEx(cfg::SymConfig)
         elseif inst.args[1] == :INIT # INIT |0>
             let target_qubit = CEval(cfg.σ, inst.args[2])
                 eval(inst.args[1])(cfg.ρ, target_qubit, "INIT")
-                counter = inject_symbolic_Xerror(cfg.ρ, target_qubit, cfg.source_line)
+                counter = inject_symbolic_Xerror(cfg.ρ, target_qubit, cfg.source_line, "INIT", [target_qubit])
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
                 if cfg.verbose
                     println(adderrcnt())
@@ -204,7 +204,7 @@ function QuantSymEx(cfg::SymConfig)
         elseif inst.args[1] == :INITP # INIT |+>
             let target_qubit = CEval(cfg.σ, inst.args[2])
                 eval(inst.args[1])(cfg.ρ, target_qubit, "INITP")
-                counter = inject_symbolic_Zerror(cfg.ρ, target_qubit, cfg.source_line)
+                counter = inject_symbolic_Zerror(cfg.ρ, target_qubit, cfg.source_line, "INITP", [target_qubit])
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
                 if cfg.verbose
                     println(adderrcnt())
@@ -214,8 +214,8 @@ function QuantSymEx(cfg::SymConfig)
         elseif inst.args[1] == :INIT2CNOT12 # INIT |0> on qubit 2, CNOT on qubits 1, 2
             let target_qubit1 = CEval(cfg.σ, inst.args[2]), target_qubit2 = CEval(cfg.σ, inst.args[3])
                 eval(inst.args[1])(cfg.ρ, target_qubit1, target_qubit2, "INIT2CNOT12")
-                counter1 = inject_symbolic_error(cfg.ρ, target_qubit1, cfg.source_line)
-                counter2 = inject_symbolic_Xerror(cfg.ρ, target_qubit2, cfg.source_line)
+                counter1 = inject_symbolic_error(cfg.ρ, target_qubit1, cfg.source_line, "INIT2CNOT12", [target_qubit1, target_qubit2])
+                counter2 = inject_symbolic_Xerror(cfg.ρ, target_qubit2, cfg.source_line, "INIT2CNOT12", [target_qubit1, target_qubit2])
                 counter = counter1 | counter2
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
                 if cfg.verbose
@@ -225,8 +225,8 @@ function QuantSymEx(cfg::SymConfig)
             end
         elseif inst.args[1] == :CNOT12DestructiveM2 #CNOT on qubits 1, 2, DestructiveM on qubit 2
             let target_qubit1 = CEval(cfg.σ, inst.args[2]), target_qubit2 = CEval(cfg.σ, inst.args[3]), sym_name=eval(CEval(cfg.σ, inst.args[4]))
-                counter1 = inject_symbolic_error(cfg.ρ, target_qubit1, cfg.source_line)
-                counter2 = inject_symbolic_Xerror(cfg.ρ, target_qubit2, cfg.source_line)
+                counter1 = inject_symbolic_error(cfg.ρ, target_qubit1, cfg.source_line, "CNOT12DestructiveM2", [target_qubit1, target_qubit2])
+                counter2 = inject_symbolic_Xerror(cfg.ρ, target_qubit2, cfg.source_line, "CNOT12DestructiveM2", [target_qubit1, target_qubit2])
                 cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubit1, target_qubit2, sym_name)
                 counter = counter1 | counter2
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
@@ -237,8 +237,8 @@ function QuantSymEx(cfg::SymConfig)
             end
         elseif inst.args[1] == :CNOT12DestructiveMX1 #CNOT on qubits 1, 2, DestructiveMX on qubit 1
             let target_qubit1 = CEval(cfg.σ, inst.args[2]), target_qubit2 = CEval(cfg.σ, inst.args[3]), sym_name=eval(CEval(cfg.σ, inst.args[4]))
-                counter1 = inject_symbolic_Zerror(cfg.ρ, target_qubit1, cfg.source_line)
-                counter2 = inject_symbolic_error(cfg.ρ, target_qubit2, cfg.source_line)
+                counter1 = inject_symbolic_Zerror(cfg.ρ, target_qubit1, cfg.source_line, "CNOT12DestructiveMX1", [target_qubit1, target_qubit2])
+                counter2 = inject_symbolic_error(cfg.ρ, target_qubit2, cfg.source_line, "CNOT12DestructiveMX1", [target_qubit1, target_qubit2])
                 cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubit1, target_qubit2, sym_name)
                 counter = counter1 | counter2
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
@@ -249,8 +249,8 @@ function QuantSymEx(cfg::SymConfig)
             end
         elseif inst.args[1] == :CZ12DestructiveMX1 #CZ on qubits 1, 2, DestructiveMX on qubit 1
             let target_qubit1 = CEval(cfg.σ, inst.args[2]), target_qubit2 = CEval(cfg.σ, inst.args[3]), sym_name=eval(CEval(cfg.σ, inst.args[4]))
-                counter1 = inject_symbolic_Zerror(cfg.ρ, target_qubit1, cfg.source_line)
-                counter2 = inject_symbolic_error(cfg.ρ, target_qubit2, cfg.source_line)
+                counter1 = inject_symbolic_Zerror(cfg.ρ, target_qubit1, cfg.source_line, "CZ12DestructiveMX1", [target_qubit1, target_qubit2])
+                counter2 = inject_symbolic_error(cfg.ρ, target_qubit2, cfg.source_line, "CZ12DestructiveMX1", [target_qubit1, target_qubit2])
                 cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubit1, target_qubit2, sym_name)
                 counter = counter1 | counter2
                 cfg.nerrs += zeroext(cfg.ctx, counter, NERRS)
@@ -263,10 +263,11 @@ function QuantSymEx(cfg::SymConfig)
             let target_qubits = CEval(cfg.σ, inst.args[2])
                 cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubits)
                 b_num_target_qubits = _range2b(length(target_qubits))
-                counter1 = zeroext(cfg.ctx, inject_symbolic_Zerror(cfg.ρ, target_qubits[1], cfg.source_line), b_num_target_qubits)   #a single Z error suffices
+                target_qubits_int = map(x -> x isa Int64 ? x : Int(x), target_qubits)
+                counter1 = zeroext(cfg.ctx, inject_symbolic_Zerror(cfg.ρ, target_qubits[1], cfg.source_line, "CatPreparationMod", target_qubits_int), b_num_target_qubits)   #a single Z error suffices
                 counter2 = bv_val(cfg.ctx, 0, b_num_target_qubits)
                 for jj in 1:length(target_qubits)
-                    tmp_counter = inject_symbolic_Xerror(cfg.ρ, target_qubits[jj], cfg.source_line)
+                    tmp_counter = inject_symbolic_Xerror(cfg.ρ, target_qubits[jj], cfg.source_line, "CatPreparationMod", target_qubits_int)
                     counter2 += zeroext(cfg.ctx, tmp_counter, b_num_target_qubits)
                     if cfg.verbose
                         println(adderrcnt())
@@ -288,8 +289,9 @@ function QuantSymEx(cfg::SymConfig)
                 b_num_target_qubits = _range2b(length(target_qubits))
                 counter1 = zeroext(cfg.ctx, bit_error, b_num_target_qubits)   #a single bit-flip error suffices
                 counter2 = bv_val(cfg.ctx, 0, b_num_target_qubits)
+                target_qubits_int = map(x -> x isa Int64 ? x : Int(x), target_qubits)
                 for jj in 1:length(target_qubits)
-                    tmp_counter = inject_symbolic_error(cfg.ρ, target_qubits[jj], cfg.source_line)
+                    tmp_counter = inject_symbolic_error(cfg.ρ, target_qubits[jj], cfg.source_line, "MultiPauliMeasurement", target_qubits_int)
                     counter2 += zeroext(cfg.ctx, tmp_counter, b_num_target_qubits)
                     if cfg.verbose
                         println(adderrcnt())
