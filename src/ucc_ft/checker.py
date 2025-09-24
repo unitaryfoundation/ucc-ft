@@ -676,7 +676,14 @@ def _gate2_states(code, ctx, num_ancilla):
 
 
 def error_free_symbolic_output(
-    code, symbolic_input_state, gadget_type: str, ctx, num_ancilla
+    code,
+    symbolic_input_state,
+    gadget_type: str,
+    ctx,
+    num_ancilla,
+    qprog_handle: jc.AnyValue,
+    cstate,
+    NERRS: int,
 ):
     match gadget_type:
         case "prepare":
@@ -691,14 +698,17 @@ def error_free_symbolic_output(
             return jl.copy(symbolic_input_state)
             pass
         case "gate":
-            # result of running the gate on the input (error free)
-            ## TODO: HOW??
-            # Assume CNOT for now (yucky)
-            res = jl.copy(symbolic_input_state)
-            d = code.d
-            for i in range(1, d * d + 1):
-                jl.CNOT(res, i, i + d * d)
-            return res
+            # run the circuit without injecting errors
+            cstate1 = jl.copy(cstate)
+            inConfig = jl.SymConfig(
+                qprog_handle, cstate1, symbolic_input_state, NERRS, False
+            )
+            outConfig = jl.QuantSymExErrorFree(inConfig)
+            if not len(outConfig) == 1:
+                raise ValueError(
+                    "Expected exactly one output state for error free execution of gate gadget"
+                )
+            return outConfig[0].ρ
         case _:
             raise ValueError(f"Invalid gadget type: {gadget_type}")
     pass
@@ -861,11 +871,18 @@ def ft_check_ideal(
         # Reset counter used inside julia code for error names
         jl.clearerrcnt()
 
+        cstate = jl.make_cstate({"ctx": ctx, "d": code.d} | qprog_context.global_decls)
         symbolic_target_state = error_free_symbolic_output(
-            code, symbolic_input_state, gadget_type, ctx, num_ancilla
+            code,
+            symbolic_input_state,
+            gadget_type,
+            ctx,
+            num_ancilla,
+            qprog_handle,
+            cstate,
+            NERRS,
         )
 
-        cstate = jl.make_cstate({"ctx": ctx, "d": code.d} | qprog_context.global_decls)
         num_errors = (code.d - 1) // 2
 
         num_main_qubits = code.num_qubits

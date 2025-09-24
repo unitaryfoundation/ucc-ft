@@ -203,6 +203,39 @@ def test_check_rotated_surface_CNOT():
     assert result
 
 
+def test_check_rotated_surface_CZ():
+    """Test the fault tolerance of the rotated surface code gate circuit."""
+    d = 3
+    sc = RotatedSurfaceCode(d)
+
+    circuit = """
+    OPENQASM 3.0;
+    include "stdgates.inc";
+
+    const uint d = __d__;
+    const uint data_size = d * d;
+    qubit[data_size] state1;
+    qubit[data_size] state2;
+
+    def logical_CZ() {
+        // QASM ranges are inclusive for both start and end
+        for int i in [0:(data_size-1)] {
+            cz state1[i], state2[i];
+        }
+    }
+    """.replace("__d__", str(d))
+    qprog_context = qasm_to_qprog(circuit)
+
+    result = ft_check_ideal(
+        sc,
+        qprog_context.get_qprog("logical_CZ"),
+        qprog_context,
+        "gate",
+        NERRS=12,
+    )
+    assert result
+
+
 def test_check_rotated_surface_decoder():
     """Test the fault tolerance of the rotated surface code gate decoder+correction gadget."""
     d = 3

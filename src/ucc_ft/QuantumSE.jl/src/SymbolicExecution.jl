@@ -457,3 +457,255 @@ function QuantSymEx(cfg::SymConfig)
     end
 
 end
+
+function QuantSymExErrorFree(cfg::SymConfig)
+    NERRS = cfg.NERRS
+
+    length(cfg.S.args) != 0 || return [cfg]
+
+    inst = cfg.S.args[1]
+
+    if ~isa(inst, Expr)
+        cfg.σ[:__res__] = CEval(cfg.σ, inst)
+        cfg.S.args = cfg.S.args[2:end]
+        return QuantSymExErrorFree(cfg)
+    end
+
+    if inst.head == :call
+        if inst.args[1] == :set_source_line
+            cfg.source_line = inst.args[2]
+            if cfg.verbose
+                println(">>> $(varid()) set_source_line($(cfg.source_line))")
+            end
+        elseif inst.args[1] in [:H, :S, :X, :Y, :Z, :CNOT, :Identity, :CZ] # Clifford gates
+            if length(inst.args) == 2
+                # 1-q Clifford
+                let target_qubit = CEval(cfg.σ, inst.args[2])
+                    eval(inst.args[1])(cfg.ρ, target_qubit)
+                    if cfg.verbose
+                        println(">>> $(varid()) $(inst.args[1]) target_qubit=$(target_qubit)")
+                    end
+                end
+            elseif length(inst.args) == 3
+                # CNOT, CZ
+                let target_qubit1 = CEval(cfg.σ, inst.args[2]), target_qubit2 = CEval(cfg.σ, inst.args[3])
+                    eval(inst.args[1])(cfg.ρ, target_qubit1, target_qubit2)
+                    if cfg.verbose
+                        println(">>> $(varid()) $(inst.args[1]) target_qubit1=$(target_qubit1), target_qubit2=$(target_qubit2)")
+                    end
+                end
+            end
+        elseif inst.args[1] in [:sX, :sY, :sZ] # Symbolic X, Y, Z gates
+            let target_qubit = CEval(cfg.σ, inst.args[2]), control_sym=CEval(cfg.σ, inst.args[3])
+                eval(inst.args[1])(cfg.ρ, target_qubit, control_sym)
+                if cfg.verbose
+                    println(">>> $(varid()) $(inst.args[1]) target_qubit=$(target_qubit), control_sym=$(control_sym)")
+                end
+            end
+        elseif inst.args[1] == :sPauli # Symbolic Pauli gate
+            let target_qubit = CEval(cfg.σ, inst.args[2]), control_sym1=CEval(cfg.σ, inst.args[3]), control_sym2=CEval(cfg.σ, inst.args[4])
+                eval(inst.args[1])(cfg.ρ, target_qubit, control_sym1, control_sym2)
+                if cfg.verbose
+                    println(">>> $(varid()) $(inst)")
+                end
+            end
+        elseif inst.args[1] == :M # Measurement Z basis
+            let target_qubit = CEval(cfg.σ, inst.args[2]), sym_name=eval(CEval(cfg.σ, inst.args[3]))
+                cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubit, sym_name)
+                if cfg.verbose
+                    println(">>> $(varid()) $(inst)")
+                end
+            end
+        elseif inst.args[1] == :MX # Measurement X basis
+            let target_qubit = CEval(cfg.σ, inst.args[2]), sym_name=eval(CEval(cfg.σ, inst.args[3]))
+                cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubit, sym_name)
+                if cfg.verbose
+                    println(">>> $(varid()) $(inst) (target_qubit=$(target_qubit), sym_name=$(sym_name))")
+                end
+            end
+        elseif inst.args[1] == :DestructiveM # Destructive Measurement Z basis
+            let target_qubit = CEval(cfg.σ, inst.args[2]), sym_name=eval(CEval(cfg.σ, inst.args[3]))
+                cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubit, sym_name)
+                if cfg.verbose
+                    println(">>> $(varid()) $(inst.args[1]) target_qubit=$(target_qubit), sym_name=$(sym_name)")
+                end
+            end
+        elseif inst.args[1] == :DestructiveMX # Destructive Measurement X basis
+            let target_qubit = CEval(cfg.σ, inst.args[2]), sym_name=eval(CEval(cfg.σ, inst.args[3]))
+                cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubit, sym_name)
+                if cfg.verbose
+                    println(">>> $(varid()) $(inst)")
+                end
+            end
+        elseif inst.args[1] == :INIT # INIT |0>
+            let target_qubit = CEval(cfg.σ, inst.args[2])
+                eval(inst.args[1])(cfg.ρ, target_qubit, "INIT")
+                if cfg.verbose
+                    println(">>> $(varid()) $(inst.args[1]) target_qubit=$(target_qubit)")
+                end
+            end
+        elseif inst.args[1] == :INITP # INIT |+>
+            let target_qubit = CEval(cfg.σ, inst.args[2])
+                eval(inst.args[1])(cfg.ρ, target_qubit, "INITP")
+                if cfg.verbose
+                    println(">>> $(varid()) $(inst)")
+                end
+            end
+        elseif inst.args[1] == :INIT2CNOT12 # INIT |0> on qubit 2, CNOT on qubits 1, 2
+            let target_qubit1 = CEval(cfg.σ, inst.args[2]), target_qubit2 = CEval(cfg.σ, inst.args[3])
+                eval(inst.args[1])(cfg.ρ, target_qubit1, target_qubit2, "INIT2CNOT12")
+                if cfg.verbose
+                    println(">>> $(varid()) $(inst)")
+                end
+            end
+        elseif inst.args[1] == :CNOT12DestructiveM2 #CNOT on qubits 1, 2, DestructiveM on qubit 2
+            let target_qubit1 = CEval(cfg.σ, inst.args[2]), target_qubit2 = CEval(cfg.σ, inst.args[3]), sym_name=eval(CEval(cfg.σ, inst.args[4]))
+                cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubit1, target_qubit2, sym_name)
+                if cfg.verbose
+                    println(">>> $(varid()) $(inst)")
+                end
+            end
+        elseif inst.args[1] == :CNOT12DestructiveMX1 #CNOT on qubits 1, 2, DestructiveMX on qubit 1
+            let target_qubit1 = CEval(cfg.σ, inst.args[2]), target_qubit2 = CEval(cfg.σ, inst.args[3]), sym_name=eval(CEval(cfg.σ, inst.args[4]))
+                cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubit1, target_qubit2, sym_name)
+                if cfg.verbose
+                    println(">>> $(varid()) $(inst)")
+                end
+            end
+        elseif inst.args[1] == :CZ12DestructiveMX1 #CZ on qubits 1, 2, DestructiveMX on qubit 1
+            let target_qubit1 = CEval(cfg.σ, inst.args[2]), target_qubit2 = CEval(cfg.σ, inst.args[3]), sym_name=eval(CEval(cfg.σ, inst.args[4]))
+                cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubit1, target_qubit2, sym_name)
+                if cfg.verbose
+                    println(">>> $(varid()) $(inst)")
+                end
+            end
+        elseif inst.args[1] == :CatPreparationMod # Cat Preparation Module
+            let target_qubits = CEval(cfg.σ, inst.args[2])
+                cfg.σ[:__res__] = eval(inst.args[1])(cfg.ρ, target_qubits)
+                if cfg.verbose
+                    println(">>> $(varid()) $(inst)")
+                end
+            end
+        elseif inst.args[1] == :MultiPauliMeasurement #Multi-qubits Pauli Measurement
+            let target_qubits = CEval(cfg.σ, inst.args[2]), Paulis = CEval(cfg.σ, inst.args[3]), sym_name=eval(CEval(cfg.σ, inst.args[4]))
+                meas_result = eval(inst.args[1])(cfg.ρ, target_qubits, Paulis, sym_name)
+                cfg.σ[:__res__] = meas_result
+                if cfg.verbose
+                    println(">>> $(varid()) $(inst)")
+                end
+            end
+        else
+            S = copy(cfg.S)
+            res = CEval(cfg.σ, inst)
+            if res isa Expr
+                σ = copy(cfg.σ)
+                cfg.S.args = CEval(cfg.σ, inst).args
+                cfg = QuantSymExErrorFree(cfg)[1]
+                σ[:__res__] = cfg.σ[:__res__]
+                cfg.σ = σ
+            elseif res isa Tuple
+                cfg.σ[:__res__] = res[1]
+                cfg.ϕ = (cfg.ϕ[1] & res[2], cfg.ϕ[2] & res[3], cfg.ϕ[3] & res[4])
+            else
+                cfg.σ[:__res__] = res
+            end
+            cfg.S.args = S.args[2:end]
+            return QuantSymExErrorFree(cfg)
+        end
+
+        cfg.S.args = cfg.S.args[2:end]
+        return QuantSymExErrorFree(cfg)
+
+    elseif inst.head == :(=)
+        if ~isa(inst.args[2], Expr)
+            CAssign(cfg.σ, inst.args[1], inst.args[2])
+            cfg.S.args = cfg.S.args[2:end]
+            return QuantSymExErrorFree(cfg)
+        end
+
+        if inst.args[2].head == :comprehension
+            inst.args[2].args[1].args[1] = postwalk(
+                x -> x isa Symbol ? x == inst.args[2].args[1].args[2].args[1] ? Expr(:$, :($x)) : x : x,
+                inst.args[2].args[1].args[1]
+            )
+            inst.args[2].args[1].args[1] = Expr(:block, Expr(:quote, inst.args[2].args[1].args[1]))
+            qprogs = CEval(cfg.σ, inst.args[2])
+            n_qprog = length(qprogs)
+            temp = Vector{Union{Z3.Expr,Int}}(undef, n_qprog)
+            S = copy(cfg.S)
+            for j in 1:n_qprog
+                cfg.S.args = [qprogs[j]]
+                cfg = QuantSymExErrorFree(cfg)[1]
+                ttmp = cfg.σ[:__res__]
+                temp[j] = ttmp isa UInt ? Int(ttmp) : ttmp
+            end
+            cfg.S.args = S.args[2:end]
+            CAssign(cfg.σ, inst.args[1], temp)
+            return QuantSymExErrorFree(cfg)
+        elseif inst.args[2].head == :call
+            S = copy(cfg.S)
+            cfg.S.args = [inst.args[2]]
+            cfg = QuantSymExErrorFree(cfg)[1]
+            CAssign(cfg.σ, inst.args[1], cfg.σ[:__res__])
+            cfg.S.args = S.args[2:end]
+            return QuantSymExErrorFree(cfg)
+        else
+            CAssign(cfg.σ, inst.args[1], inst.args[2])
+            cfg.S.args = cfg.S.args[2:end]
+            return QuantSymExErrorFree(cfg)
+        end
+
+    elseif inst.head == :if
+        ϕ = CEval(cfg.σ, inst.args[1])
+        S1 = copy(cfg.S)
+        S1.args = [inst.args[2].args; cfg.S.args[2:end]]
+        S2 = copy(cfg.S)
+        if length(inst.args) == 3
+            S2.args = [inst.args[3].args; cfg.S.args[2:end]]
+        else
+            S2.args = cfg.S.args[2:end]
+        end
+        if ϕ isa Bool
+            if ϕ
+                cfg1 = SymConfig(S1, cfg.σ, cfg.ρ, cfg.P, cfg.ϕ, cfg.ctx, cfg.NERRS, cfg.nerrs, cfg.source_line, cfg.verbose)
+                return QuantSymExErrorFree(cfg1)
+            else
+                cfg2 = SymConfig(S2, cfg.σ, cfg.ρ, cfg.P, cfg.ϕ, cfg.ctx, cfg.NERRS, cfg.nerrs, cfg.source_line, cfg.verbose)
+                return QuantSymExErrorFree(cfg2)
+            end
+        end
+        cfg1 = SymConfig(S1, cfg.σ, cfg.ρ, cfg.P, (cfg.ϕ[1] & ϕ, cfg.ϕ[2], cfg.ϕ[3]), cfg.ctx, cfg.NERRS, cfg.nerrs, cfg.source_line, cfg.verbose)
+        cfg2 = SymConfig(S2, cfg.σ, cfg.ρ, cfg.P, (cfg.ϕ[1] & not(ϕ), cfg.ϕ[2], cfg.ϕ[3]), cfg.ctx, cfg.NERRS, cfg.nerrs, cfg.source_line, cfg.verbose)
+        return vcat(QuantSymExErrorFree(cfg1)..., QuantSymExErrorFree(cfg2)...)
+    elseif inst.head == :for
+        inst.args[2] = postwalk(
+            x -> x isa Symbol ? x == inst.args[1].args[1] ? Expr(:$, :($x)) : x : x,
+            inst.args[2]
+        )
+        new_S = Expr(:block, Expr(:quote, inst.args[2]))
+        qprogs = [CEval(CState(Dict([(inst.args[1].args[1], j)])), new_S) for j in CEval(cfg.σ, inst.args[1])]
+        n_qprog = length(qprogs)
+        S = copy(cfg.S)
+        for j in 1:n_qprog
+            cfg.S.args = qprogs[j].args
+            cfg = QuantSymExErrorFree(cfg)[1]
+        end
+        cfg.S.args = S.args[2:end]
+        return QuantSymExErrorFree(cfg)
+    elseif inst.head == :repeat_until
+        rest_S = cfg.S.args[2:end]
+        cfg.S.args = inst.args[2].args
+        newcfgs = QuantSymExErrorFree(cfg)
+        execute_config(c) = begin
+            ϕ = CEval(c.σ, inst.args[1])
+            c.S.args = rest_S
+            return SymConfig(c.S, c.σ, c.ρ, c.P, (c.ϕ[1] & ϕ, c.ϕ[2], c.ϕ[3]), c.ctx, c.NERRS, c.nerrs, c.source_line, c.verbose)
+        end
+        final = map(execute_config, newcfgs)
+        return vcat([QuantSymExErrorFree(final[ii]) for ii in 1:length(final)]...)
+    else
+        cfg.σ[:__res__] = CEval(cfg.σ, inst)
+        cfg.S.args = cfg.S.args[2:end]
+        return QuantSymExErrorFree(cfg)
+    end
+end

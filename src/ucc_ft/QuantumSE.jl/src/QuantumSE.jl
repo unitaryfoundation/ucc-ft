@@ -14,7 +14,7 @@ export M, X, Y, Z, sX, sY, sZ, S, H, CNOT, INIT, Identity, CZ, INITP, MX, sPauli
     _bv_val, _bv_const, _len2, _range2b, check_FT, _sum, varid, zeroext, addzeros, alloc_symb, generate_cat_verification, _canonicalize_mat, _Pauli_weight, _extend_rows
 
 include("SymbolicExecution.jl")
-export CState, SymConfig, QuantSymEx, CEval, errcnt, adderrcnt, clearerrcnt
+export CState, SymConfig, QuantSymEx, QuantSymExErrorFree, CEval, errcnt, adderrcnt, clearerrcnt
 
 include("LinearGroup.jl")
 export AbstractGroup, AbstraLinearGroup, L2, PL2, pgl2, psl2, jacobi4squares
